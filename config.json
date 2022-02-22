@@ -1,0 +1,9 @@
+{
+  "keyframe_dir": "/home/jake/data/2022-02-17-11-29-15/keyframes",
+  "scans_dir": "/home/jake/data/2022-02-17-11-29-15/scans",
+  "cam_intrinsics_file": "/home/jake/data/2022-02-17-11-29-15/F1_KB2.json",
+  "extrinsics_file": "/home/jake/data/2022-02-17-11-29-15/extrinsics.json",
+  "camera_frame_id": "F1_link",
+  "lidar_frame_id": "lidar_h_link",
+  "poses_file": "/home/jake/data/2022-02-17-11-29-15/poses.ply"
+}

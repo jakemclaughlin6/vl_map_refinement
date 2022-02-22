@@ -6,6 +6,7 @@
 #include <fuse_core/util.h>
 
 #include <beam_calibration/CameraModel.h>
+#include <beam_cv/Utils.h>
 #include <beam_optimization/CamPoseReprojectionCost.h>
 #include <beam_utils/math.h>
 
@@ -13,7 +14,6 @@
 #include <ceres/cost_function_to_functor.h>
 #include <ceres/numeric_diff_cost_function.h>
 #include <ceres/rotation.h>
-
 namespace fuse_constraints {
 
 class ReprojectionFunctor {
