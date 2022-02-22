@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>bs_tools</name>
+  <name>tcvl</name>
   <version>0.1.0</version>
   <description>Tools for testing visual-lidar constraints</description>
 
@@ -14,9 +14,15 @@
 
   <depend>boost</depend>
   <depend>eigen</depend>
+  <depend>tf2</depend>
   <depend>fuse_constraints</depend>
   <depend>fuse_core</depend>
   <depend>fuse_graphs</depend>
   <depend>fuse_variables</depend>
+  <depend>fuse_loss</depend>
+
+  <export>
+    <fuse_core plugin="${prefix}/fuse_plugins.xml" />
+  </export>
 
 </package>
