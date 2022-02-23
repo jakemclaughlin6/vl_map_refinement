@@ -21,8 +21,4 @@
   <depend>fuse_variables</depend>
   <depend>fuse_loss</depend>
 
-  <export>
-    <fuse_core plugin="${prefix}/fuse_plugins.xml" />
-  </export>
-
 </package>
