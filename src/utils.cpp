@@ -4,26 +4,56 @@
 #include <iostream>
 #include <sstream>
 
-std::set<uint64_t> GetTimestampsFromFolder(const std::string &path) {
+namespace tcvl {
 
-  std::set<uint64_t> out_set;
+std::shared_ptr<beam_mapping::Poses> LoadPoses(const std::string &path) {
+  std::shared_ptr<beam_mapping::Poses> poses;
+  // declare variables
+  std::ifstream infile;
+  std::string line;
+  Eigen::Matrix4d Tk;
+  ros::Time time_stamp_k;
+  // open file
+  infile.open(path);
+  // extract poses
+  while (!infile.eof()) {
+    // get timestamp k
+    std::getline(infile, line, ' ');
+    if (line.length() > 0) {
+      try {
+        double t = std::stod(line);
+        time_stamp_k = ros::Time(t);
+      } catch (const std::invalid_argument &e) {
+        BEAM_CRITICAL("Invalid argument, probably at end of file");
+        throw std::invalid_argument{
+            "Invalid argument, probably at end of file"};
+      }
 
-  boost::filesystem::path p(path);
+      Eigen::Vector3d p;
+      Eigen::Quaterniond q;
+      std::getline(infile, line, ' ');
+      p[0] = std::stod(line);
+      std::getline(infile, line, ' ');
+      p[1] = std::stod(line);
+      std::getline(infile, line, ' ');
+      p[2] = std::stod(line);
+      std::getline(infile, line, ' ');
+      q.x() = std::stod(line);
+      std::getline(infile, line, ' ');
+      q.y() = std::stod(line);
+      std::getline(infile, line, ' ');
+      q.z() = std::stod(line);
+      std::getline(infile, line, '\n');
+      q.w() = std::stod(line);
 
-  boost::filesystem::directory_iterator end_itr;
+      Eigen::Matrix4d Tk;
+      beam::QuaternionAndTranslationToTransformMatrix(q, p, Tk);
 
-  // cycle through the directory
-  for (boost::filesystem::directory_iterator itr(p); itr != end_itr; ++itr) {
-
-    if (boost::filesystem::is_regular_file(itr->path())) {
-      std::string file = itr->path().stem().string();
-      file.erase(std::remove(file.begin(), file.end(), '.'), file.end());
-      uint64_t timestamp;
-      std::istringstream iss(file);
-      iss >> timestamp;
-      out_set.insert(timestamp);
+      poses->AddSinglePose(Tk);
+      poses->AddSingleTimeStamp(time_stamp_k);
     }
   }
-
-  return out_set;
+  return poses;
 }
+
+} // namespace tcvl

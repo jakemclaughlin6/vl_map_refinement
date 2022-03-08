@@ -1,5 +1,11 @@
-#include <map>
-#include <string>
-#include <set>
+#pragma once
 
-std::set<uint64_t>  GetTimestampsFromFolder(const std::string& path);
+#include <beam_mapping/Poses.h>
+#include <map>
+#include <set>
+#include <string>
+
+namespace tcvl {
+
+std::shared_ptr<beam_mapping::Poses> LoadPoses(const std::string &path);
+}
