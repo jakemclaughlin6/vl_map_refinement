@@ -27,5 +27,4 @@
   <depend>fuse_variables</depend>
   <depend>fuse_loss</depend>
 
-
 </package>
