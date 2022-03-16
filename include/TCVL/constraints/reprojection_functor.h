@@ -62,7 +62,7 @@ public:
     }
 
     // if not enough points to fit ellipse, then we use a very large covariance
-    // to to the assumption that its very close to the edge
+    // for the assumption that its very close to the edge
     try {
       A_ = beam_cv::FitEllipse(circle_d);
     } catch (const std::runtime_error& re) {

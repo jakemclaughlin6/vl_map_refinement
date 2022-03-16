@@ -43,13 +43,25 @@ int main(int argc, char *argv[]) {
   std::vector<std::string> topics{J["image_topic"], J["lidar_topic"]};
   rosbag::View view(bag, rosbag::TopicQuery(topics));
   foreach (rosbag::MessageInstance const m, view) {
-
-    sensor_msgs::PointCloud2::ConstPtr scan =
+    // add lidar scan to mapper
+    sensor_msgs::PointCloud2::Ptr scan =
         m.instantiate<sensor_msgs::PointCloud2>();
-
-    sensor_msgs::CompressedImage::ConstPtr buffer_image_compressed =
+    if (scan) {
+      mapper->AddLidarScan(scan);
+    }
+    // process image
+    sensor_msgs::CompressedImage::Ptr buffer_image_compressed =
         m.instantiate<sensor_msgs::CompressedImage>();
+    if (buffer_image_compressed) {
+      cv::Mat image =
+          cv::imdecode(buffer_image_compressed->data, cv::IMREAD_GRAYSCALE);
+      ros::Time stamp = buffer_image_compressed->header.stamp;
+      mapper->ProcessImage(image, stamp);
+    }
   }
+
+  // optimize graph
+  // compare results
 
   return 0;
 }

@@ -7,7 +7,8 @@
 namespace tcvl {
 
 std::shared_ptr<beam_mapping::Poses> LoadPoses(const std::string &path) {
-  std::shared_ptr<beam_mapping::Poses> poses;
+  std::shared_ptr<beam_mapping::Poses> poses =
+      std::make_shared<beam_mapping::Poses>();
   // declare variables
   std::ifstream infile;
   std::string line;
