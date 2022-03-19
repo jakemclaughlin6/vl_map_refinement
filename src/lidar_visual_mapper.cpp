@@ -184,20 +184,6 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
     // manage keyframes
     if (previous_keyframes_.size() > 20) {
       previous_keyframes_.pop_front();
-
-      // // add frame poses to cloud and save
-      // pcl::PointCloud<pcl::PointXYZRGB> frame_cloud;
-      // for (auto &kf_time : previous_keyframes_) {
-      //   Eigen::Matrix4d T_CAM_WORLD;
-      //   if (GetCameraPose(kf_time, T_CAM_WORLD)) {
-      //     frame_cloud =
-      //         beam::AddFrameToCloud(frame_cloud, T_CAM_WORLD.inverse(),
-      //         0.001);
-      //   }
-      // }
-      // beam::SavePointCloud<pcl::PointXYZRGB>(
-      //     "/home/jake/frames.pcd", frame_cloud,
-      //     beam::PointCloudFileType::PCDBINARY);
     }
   }
 }
