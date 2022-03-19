@@ -1,6 +1,6 @@
 {
-  "bag_file": "/home/jake/data/M2DGR/gate_01/gate_01.bag",
-  "pose_file": "/home/jake/data/M2DGR/gate_01/gate_01.txt",
+  "bag_file": "/home/jake/data/M2DGR/room_01/room_01.bag",
+  "pose_file": "/home/jake/data/M2DGR/room_01/room_01.txt",
   "cam_intrinsics_file": "/home/jake/data/M2DGR/pinhole_color.json",
   "extrinsics_file": "/home/jake/data/M2DGR/extrinsics.json",
   "camera_frame_id": "camera_color_optical_frame",

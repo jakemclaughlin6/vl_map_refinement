@@ -31,7 +31,8 @@ public:
                     const std::string &extrinsics_path,
                     const std::string &camera_frame_id,
                     const std::string &lidar_frame_id,
-                    const std::string &pose_frame_id);
+                    const std::string &pose_frame_id,
+                    const ros::Time &start_time, const ros::Time &end_time);
 
   void AddLidarScan(sensor_msgs::PointCloud2::Ptr scan);
 
@@ -59,12 +60,16 @@ protected:
 
   bool GetCameraPose(const ros::Time &stamp, Eigen::Matrix4d &T_WORLD_CAMERA);
 
+  void ProcessLidarCoupling(const ros::Time &kf_time);
+
+  Eigen::Matrix4d PerturbPose(const Eigen::Matrix4d &T_WORLD_SENSOR,
+                              const ros::Time &pose_time);
+
 private:
   std::shared_ptr<beam_calibration::TfTree> tree_;
   std::shared_ptr<tcvl::PoseLookup> pose_lookup_;
   std::shared_ptr<beam_calibration::CameraModel> cam_model_;
 
-  std::deque<sensor_msgs::PointCloud2> lidar_buffer_;
   std::deque<ros::Time> previous_keyframes_;
   fuse_core::Graph::SharedPtr graph_;
   std::shared_ptr<beam_cv::KLTracker> tracker_;
@@ -74,5 +79,14 @@ private:
 
   Eigen::Matrix4d T_cam_baselink_;
   Eigen::Matrix4d T_lidar_cam_;
+  Eigen::Matrix4d T_baselink_lidar_;
+
+  ros::Time start_time_;
+  ros::Time end_time_;
+
+  double total_trajectory_m_;
+
+  std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>
+      current_cloud_; // in world frame
 };
 } // namespace tcvl

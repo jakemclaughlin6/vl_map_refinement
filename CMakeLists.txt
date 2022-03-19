@@ -12,6 +12,7 @@ find_package(
   COMPONENTS 
     calibration
     cv
+    depth
     utils
     matching
     mapping
@@ -93,6 +94,7 @@ target_link_libraries(
     beam::mapping
     beam::calibration
     beam::cv
+    beam::depth
     beam::optimization
 )
 

@@ -23,12 +23,6 @@ int main(int argc, char *argv[]) {
   nlohmann::json J;
   beam::ReadJson(FLAGS_config_file, J);
 
-  // Initialize lidar-visual mapper to do the bulk of the work
-  std::shared_ptr<tcvl::LidarVisualMapper> mapper =
-      std::make_shared<tcvl::LidarVisualMapper>(
-          J["cam_intrinsics_file"], J["pose_file"], J["extrinsics_file"],
-          J["camera_frame_id"], J["lidar_frame_id"], J["pose_frame_id"]);
-
   // Load bag file
   std::string bag_file = J["bag_file"];
   if (!boost::filesystem::exists(bag_file) ||
@@ -39,9 +33,20 @@ int main(int argc, char *argv[]) {
   rosbag::Bag bag;
   bag.open(bag_file);
 
-  // Begin processing loop
+  // Open bag and get its info
   std::vector<std::string> topics{J["image_topic"], J["lidar_topic"]};
   rosbag::View view(bag, rosbag::TopicQuery(topics));
+  ros::Time start_time = view.getBeginTime();
+  ros::Time end_time = view.getEndTime();
+
+  // Initialize lidar-visual mapper to do the bulk of the work
+  std::shared_ptr<tcvl::LidarVisualMapper> mapper =
+      std::make_shared<tcvl::LidarVisualMapper>(
+          J["cam_intrinsics_file"], J["pose_file"], J["extrinsics_file"],
+          J["camera_frame_id"], J["lidar_frame_id"], J["pose_frame_id"],
+          start_time, end_time);
+
+  // Begin processing loop
   foreach (rosbag::MessageInstance const m, view) {
     // add lidar scan to mapper
     sensor_msgs::PointCloud2::Ptr scan =
