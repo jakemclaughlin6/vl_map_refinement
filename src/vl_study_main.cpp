@@ -46,6 +46,7 @@ int main(int argc, char *argv[]) {
           J["camera_frame_id"], J["lidar_frame_id"], J["pose_frame_id"],
           start_time, end_time);
 
+  int max_keyframes = J["max_keyframes"];
   // Begin processing loop
   foreach (rosbag::MessageInstance const m, view) {
     // add lidar scan to mapper
@@ -63,10 +64,13 @@ int main(int argc, char *argv[]) {
       ros::Time stamp = buffer_image_compressed->header.stamp;
       mapper->ProcessImage(image, stamp);
     }
-  }
 
-  // optimize graph
-  // compare results
+    if(mapper->GetNumKeyframes() >= max_keyframes){
+      mapper->OptimizeGraph();
+      mapper->OutputResults(J["output_folder"]);
+      break;
+    }
+  }
 
   return 0;
 }

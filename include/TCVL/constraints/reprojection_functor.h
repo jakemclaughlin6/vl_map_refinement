@@ -27,11 +27,10 @@ public:
    * @param[in] cam_model The camera intrinsics for projection
    */
   ReprojectionFunctor(
-      const Eigen::Vector2d& pixel_measurement,
+      const Eigen::Vector2d &pixel_measurement,
       const std::shared_ptr<beam_calibration::CameraModel> cam_model,
-      const Eigen::Matrix4d& T_cam_baselink)
-      : pixel_measurement_(pixel_measurement),
-        cam_model_(cam_model),
+      const Eigen::Matrix4d &T_cam_baselink)
+      : pixel_measurement_(pixel_measurement), cam_model_(cam_model),
         T_cam_baselink_(T_cam_baselink) {
     /*
     The logic behind this covariance is in VILENS:
@@ -39,14 +38,14 @@ public:
     */
     // undistort pixel measurement
     Eigen::Vector2i pixel_i = pixel_measurement_.cast<int>();
-    if (!cam_model_->Undistortable(pixel_i)) {
+    Eigen::Vector2i und_pixel;
+    if (!cam_model_->UndistortPixel(pixel_i, und_pixel)) {
       ROS_FATAL_STREAM("Invalid pixel measurement for visual factor, "
                        "undistorted pixel is in not image domain.");
       throw std::runtime_error{"Invalid pixel measurement for visual factor, "
                                "undistorted pixel is in not image domain."};
     }
-    undistorted_pixel_measurement_ =
-        cam_model_->UndistortPixel(pixel_i).cast<double>();
+    undistorted_pixel_measurement_ = und_pixel.cast<double>();
 
     float sigma = 2;
     // get circle around pixel in distorted image
@@ -55,9 +54,10 @@ public:
 
     // undistort circle to get a covariance estimate
     std::vector<Eigen::Vector2d> circle_d;
-    for (auto& p : circle) {
-      if (cam_model_->Undistortable(p)) {
-        circle_d.push_back(cam_model_->UndistortPixel(p).cast<double>());
+    for (auto &p : circle) {
+      Eigen::Vector2i und_p;
+      if (cam_model_->UndistortPixel(p, und_p)) {
+        circle_d.push_back(und_p.cast<double>());
       }
     }
 
@@ -65,7 +65,7 @@ public:
     // for the assumption that its very close to the edge
     try {
       A_ = beam_cv::FitEllipse(circle_d);
-    } catch (const std::runtime_error& re) {
+    } catch (const std::runtime_error &re) {
       A_ = Eigen::Matrix2d::Identity();
       A_(0, 0) = std::pow(3 * sigma, 2);
       A_(1, 1) = std::pow(3 * sigma, 2);
@@ -80,9 +80,9 @@ public:
   }
 
   template <typename T>
-  bool operator()(const T* const R_WORLD_BASELINK,
-                  const T* const t_WORLD_BASELINK, const T* const P_WORLD,
-                  T* residual) const {
+  bool operator()(const T *const R_WORLD_BASELINK,
+                  const T *const t_WORLD_BASELINK, const T *const P_WORLD,
+                  T *residual) const {
     // transform point from world frame into camera frame
     Eigen::Matrix<T, 4, 4> T_CAM_BASELINK = T_cam_baselink_.cast<T>();
 
@@ -122,7 +122,7 @@ public:
     P_CAMERA[1] = P_CAM[1];
     P_CAMERA[2] = P_CAM[2];
 
-    const T* P_CAMERA_const = &(P_CAMERA[0]);
+    const T *P_CAMERA_const = &(P_CAMERA[0]);
 
     // project point into pixel space
     T pixel_projected[2];

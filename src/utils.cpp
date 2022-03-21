@@ -39,13 +39,13 @@ std::shared_ptr<beam_mapping::Poses> LoadPoses(const std::string &path) {
       std::getline(infile, line, ' ');
       p[2] = std::stod(line);
       std::getline(infile, line, ' ');
+      q.w() = std::stod(line);
+      std::getline(infile, line, ' ');
       q.x() = std::stod(line);
       std::getline(infile, line, ' ');
       q.y() = std::stod(line);
-      std::getline(infile, line, ' ');
-      q.z() = std::stod(line);
       std::getline(infile, line, '\n');
-      q.w() = std::stod(line);
+      q.z() = std::stod(line);
 
       Eigen::Matrix4d Tk;
       beam::QuaternionAndTranslationToTransformMatrix(q, p, Tk);

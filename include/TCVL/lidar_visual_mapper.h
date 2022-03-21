@@ -34,11 +34,15 @@ public:
                     const std::string &pose_frame_id,
                     const ros::Time &start_time, const ros::Time &end_time);
 
-  void AddLidarScan(sensor_msgs::PointCloud2::Ptr scan);
+  void AddLidarScan(const sensor_msgs::PointCloud2::Ptr &scan);
 
   void ProcessImage(const cv::Mat &image, const ros::Time &timestamp);
 
   void OptimizeGraph();
+
+  void OutputResults(const std::string &folder);
+
+  size_t GetNumKeyframes();
 
 protected:
   void AddBaselinkPose(const Eigen::Matrix4d &T_WORLD_BASELINK,
@@ -85,6 +89,8 @@ private:
   ros::Time end_time_;
 
   double total_trajectory_m_;
+
+  size_t num_keyframes_{0};
 
   std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>
       current_cloud_; // in world frame
