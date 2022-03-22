@@ -13,6 +13,8 @@
 DEFINE_string(config_file, "", "Full path to config file to load (Required).");
 DEFINE_validator(config_file, &beam::gflags::ValidateFileMustExist);
 
+bool ValidateJsonConfig(const nlohmann::json &J);
+
 int main(int argc, char *argv[]) {
   // Load config file
   gflags::ParseCommandLineFlags(&argc, &argv, true);
@@ -22,6 +24,9 @@ int main(int argc, char *argv[]) {
   }
   nlohmann::json J;
   beam::ReadJson(FLAGS_config_file, J);
+  if (!ValidateJsonConfig(J)) {
+    return -1;
+  }
 
   // Load bag file
   std::string bag_file = J["bag_file"];
@@ -65,12 +70,65 @@ int main(int argc, char *argv[]) {
       mapper->ProcessImage(image, stamp);
     }
 
-    if(mapper->GetNumKeyframes() >= max_keyframes){
-      mapper->OptimizeGraph();
+    if (mapper->GetNumKeyframes() >= max_keyframes) {
+      //mapper->OptimizeGraph();
       mapper->OutputResults(J["output_folder"]);
       break;
     }
   }
 
   return 0;
+}
+
+bool ValidateJsonConfig(const nlohmann::json &J) {
+  bool pass = true;
+  if (J.find("bag_file") == J.end()) {
+    BEAM_ERROR("Field 'bag_file' missing.");
+    pass = false;
+  }
+
+  if (J.find("image_topic") == J.end()) {
+    BEAM_ERROR("Field 'image_topic' missing.");
+    pass = false;
+  }
+
+  if (J.find("lidar_topic") == J.end()) {
+    BEAM_ERROR("Field 'lidar_topic' missing.");
+    pass = false;
+  }
+
+  if (J.find("cam_intrinsics_file") == J.end()) {
+    BEAM_ERROR("Field 'cam_intrinsics_file' missing.");
+    pass = false;
+  }
+  if (J.find("pose_file") == J.end()) {
+    BEAM_ERROR("Field 'pose_file' missing.");
+    pass = false;
+  }
+  if (J.find("extrinsics_file") == J.end()) {
+    BEAM_ERROR("Field 'extrinsics_file' missing.");
+    pass = false;
+  }
+  if (J.find("camera_frame_id") == J.end()) {
+    BEAM_ERROR("Field 'camera_frame_id' missing.");
+    pass = false;
+  }
+  if (J.find("lidar_frame_id") == J.end()) {
+    BEAM_ERROR("Field 'lidar_frame_id' missing.");
+    pass = false;
+  }
+  if (J.find("pose_frame_id") == J.end()) {
+    BEAM_ERROR("Field 'pose_frame_id' missing.");
+    pass = false;
+  }
+  if (J.find("max_keyframes") == J.end()) {
+    BEAM_ERROR("Field 'max_keyframes' missing.");
+    pass = false;
+  }
+  if (J.find("output_folder") == J.end()) {
+    BEAM_ERROR("Field 'output_folder' missing.");
+    pass = false;
+  }
+
+  return pass;
 }

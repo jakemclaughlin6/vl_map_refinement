@@ -194,7 +194,9 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
   }
 }
 
+// TODO
 void LidarVisualMapper::ProcessLidarCoupling(const ros::Time &kf_time) {
+
   int R = 9;
   // // transform into current camera frame
   // Eigen::Matrix4d T_CAM_WORLD;
@@ -297,6 +299,53 @@ void LidarVisualMapper::OutputResults(const std::string &folder) {
     BEAM_ERROR("Invalid output folder.");
     throw std::runtime_error{"Invalid output folder."};
   }
+  // create ordered map of poses keyed by timestamp
+  std::map<double, std::vector<double>> poses;
+  for (auto &var : graph_->getVariables()) {
+    fuse_variables::Position3DStamped::SharedPtr p =
+        fuse_variables::Position3DStamped::make_shared();
+
+    fuse_variables::Orientation3DStamped::SharedPtr q =
+        fuse_variables::Orientation3DStamped::make_shared();
+
+    if (var.type() == q->type()) {
+      *q = dynamic_cast<const fuse_variables::Orientation3DStamped &>(var);
+      auto position_uuid = fuse_core::uuid::generate(p->type(), q->stamp(),
+                                                     fuse_core::uuid::NIL);
+      *p = dynamic_cast<const fuse_variables::Position3DStamped &>(
+          graph_->getVariable(position_uuid));
+
+      std::vector<double> pose_vector{p->x(), p->y(), p->z(), q->w(),
+                                      q->x(), q->y(), q->z()};
+      poses[q->stamp().toSec()] = pose_vector;
+    }
+  }
+
+  // output results
+  std::ofstream outfile(folder + "/result_poses.txt");
+  pcl::PointCloud<pcl::PointXYZRGB> frame_cloud;
+  for (auto &pose : poses) {
+    double timestamp = pose.first;
+    std::vector<double> pose_vector = pose.second;
+    // add pose to a file in the given folder
+    std::stringstream line;
+    line << std::fixed;
+    line << timestamp << " ";
+    line << pose_vector[0] << " " << pose_vector[1] << " " << pose_vector[2]
+         << " " << pose_vector[3] << " " << pose_vector[4] << " "
+         << pose_vector[5] << " " << pose_vector[6] << std::endl;
+    outfile << line.str();
+    // add frame poses to cloud and save in given folder
+    Eigen::Matrix4d T_WORLD_BASELINK;
+    Eigen::Vector3d position(pose_vector[0], pose_vector[1], pose_vector[2]);
+    Eigen::Quaterniond orientation(pose_vector[3], pose_vector[4],
+                                   pose_vector[5], pose_vector[6]);
+    beam::QuaternionAndTranslationToTransformMatrix(orientation, position,
+                                                    T_WORLD_BASELINK);
+    frame_cloud = beam::AddFrameToCloud(frame_cloud, T_WORLD_BASELINK, 0.001);
+  }
+  beam::SavePointCloud<pcl::PointXYZRGB>(folder + "/frames.pcd", frame_cloud,
+                                         beam::PointCloudFileType::PCDBINARY);
 }
 
 size_t LidarVisualMapper::GetNumKeyframes() { return num_keyframes_; }
