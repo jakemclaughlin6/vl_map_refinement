@@ -72,7 +72,7 @@ int main(int argc, char *argv[]) {
     }
 
     if (mapper->GetNumKeyframes() >= max_keyframes) {
-      mapper->OptimizeGraph();
+      //mapper->OptimizeGraph();
       mapper->OutputResults(J["output_folder"]);
       break;
     }

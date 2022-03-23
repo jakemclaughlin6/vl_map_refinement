@@ -65,9 +65,6 @@ protected:
 
   void ProcessLidarCoupling(const ros::Time &kf_time);
 
-  Eigen::Matrix4d PerturbPose(const Eigen::Matrix4d &T_WORLD_SENSOR,
-                              const ros::Time &pose_time);
-
 private:
   std::shared_ptr<beam_calibration::TfTree> tree_;
   std::shared_ptr<tcvl::PoseLookup> pose_lookup_;

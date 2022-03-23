@@ -60,7 +60,6 @@ catkin_package(
 ###########
 add_library(
   ${PROJECT_NAME}
-  src/utils.cpp
   src/pose_lookup.cpp
   src/lidar_visual_mapper.cpp
   src/constraints/reprojection_constraint.cpp

@@ -18,7 +18,7 @@ LidarVisualMapper::LidarVisualMapper(
       pose_frame_id_(pose_frame_id), start_time_(start_time),
       end_time_(end_time) {
 
-  // Load ground truth poses file
+  // Load initial pose estimates
   if (!boost::filesystem::exists(pose_lookup_path) ||
       boost::filesystem::is_directory(pose_lookup_path)) {
     BEAM_ERROR("Invalid Poses File Path.");
@@ -100,8 +100,7 @@ void LidarVisualMapper::AddLidarScan(
   Eigen::Matrix4d T_WORLD_BASELINK;
   pose_lookup_->GetT_WORLD_SENSOR(T_WORLD_BASELINK, scan->header.stamp);
 
-  // perturb pose and put it into lidars frame
-  // PerturbPose(T_WORLD_BASELINK, msg.header.stamp);
+  // get pose in lidar frame
   Eigen::Matrix4d T_WORLD_LIDAR = T_WORLD_BASELINK * T_baselink_lidar_;
 
   // transform scan into world frame
@@ -130,9 +129,6 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
     // add keyframes pose to the graph
     Eigen::Matrix4d T_WORLD_BASELINK;
     pose_lookup_->GetT_WORLD_SENSOR(T_WORLD_BASELINK, timestamp);
-
-    // perturb pose
-    // PerturbPose(T_WORLD_BASELINK, timestamp);
 
     // add pose to graph
     AddBaselinkPose(T_WORLD_BASELINK, timestamp);
@@ -367,8 +363,7 @@ void LidarVisualMapper::OutputResults(const std::string &folder) {
     outfile << line.str();
 
     // add pose to frame cloud
-    Eigen::Matrix4d T_WORLD_CAM = T_WORLD_BASELINK * T_cam_baselink_.inverse();
-    frame_cloud = beam::AddFrameToCloud(frame_cloud, T_WORLD_CAM, 0.001);
+    frame_cloud = beam::AddFrameToCloud(frame_cloud, T_WORLD_BASELINK, 0.001);
   }
   beam::SavePointCloud<pcl::PointXYZRGB>(folder + "/frames.pcd", frame_cloud,
                                          beam::PointCloudFileType::PCDBINARY);
@@ -490,32 +485,6 @@ bool LidarVisualMapper::GetCameraPose(const ros::Time &stamp,
   } else {
     return false;
   }
-}
-
-Eigen::Matrix4d
-LidarVisualMapper::PerturbPose(const Eigen::Matrix4d &T_WORLD_SENSOR,
-                               const ros::Time &pose_time) {
-
-  Eigen::Vector3d p;
-  Eigen::Quaterniond q;
-  beam::TransformMatrixToQuaternionAndTranslation(T_WORLD_SENSOR, q, p);
-  // perturb position
-  double w = (pose_time.toSec() - start_time_.toSec()) /
-             (end_time_.toSec() - start_time_.toSec());
-  double x = total_trajectory_m_ / 300.0;
-  Eigen::Vector3d perturbation(2 * w * x, w * x, w * x);
-  p += perturbation;
-  // perturb yaw
-  double y = total_trajectory_m_ / 100.0;
-  auto euler = q.toRotationMatrix().eulerAngles(0, 1, 2);
-  euler[2] += w * y;
-  q = Eigen::AngleAxisd(euler[0], Eigen::Vector3d::UnitX()) *
-      Eigen::AngleAxisd(euler[1], Eigen::Vector3d::UnitY()) *
-      Eigen::AngleAxisd(euler[2], Eigen::Vector3d::UnitZ());
-  // update pose
-  Eigen::Matrix4d output;
-  beam::QuaternionAndTranslationToTransformMatrix(q, p, output);
-  return output;
 }
 
 } // namespace tcvl
