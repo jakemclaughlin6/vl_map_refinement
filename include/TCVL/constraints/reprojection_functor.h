@@ -67,8 +67,8 @@ public:
       A_ = beam_cv::FitEllipse(circle_d);
     } catch (const std::runtime_error &re) {
       A_ = Eigen::Matrix2d::Identity();
-      A_(0, 0) = std::pow(3 * sigma, 2);
-      A_(1, 1) = std::pow(3 * sigma, 2);
+      A_(0, 0) = std::pow(2 * sigma, 2);
+      A_(1, 1) = std::pow(2 * sigma, 2);
     }
 
     // projection functor
@@ -133,8 +133,8 @@ public:
     result[0] = (pixel_measurement_.cast<T>()[0] - pixel_projected[0]);
     result[1] = (pixel_measurement_.cast<T>()[1] - pixel_projected[1]);
 
-    // apply sqrt information matrix
-    result = A_.cast<T>() * result;
+    // // apply sqrt information matrix
+    // result = A_.cast<T>() * result;
 
     // fill residual
     residual[0] = result[0];

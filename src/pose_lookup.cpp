@@ -1,5 +1,4 @@
 #include <TCVL/pose_lookup.h>
-#include <TCVL/utils.h>
 #include <beam_utils/log.h>
 #include <geometry_msgs/TransformStamped.h>
 

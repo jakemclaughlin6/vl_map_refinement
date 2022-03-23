@@ -1,9 +1,11 @@
 #include <rosbag/bag.h>
 #include <rosbag/view.h>
-#include <sensor_msgs/CompressedImage.h>
+#include <sensor_msgs/Image.h>
 #include <sensor_msgs/PointCloud2.h>
 
 #include <TCVL/lidar_visual_mapper.h>
+
+#include <beam_cv/OpenCVConversions.h>
 
 #include <boost/foreach.hpp>
 #include <gflags/gflags.h>
@@ -60,18 +62,17 @@ int main(int argc, char *argv[]) {
     if (scan) {
       mapper->AddLidarScan(scan);
     }
+
     // process image
-    sensor_msgs::CompressedImage::Ptr buffer_image_compressed =
-        m.instantiate<sensor_msgs::CompressedImage>();
-    if (buffer_image_compressed) {
-      cv::Mat image =
-          cv::imdecode(buffer_image_compressed->data, cv::IMREAD_GRAYSCALE);
-      ros::Time stamp = buffer_image_compressed->header.stamp;
+    sensor_msgs::Image::Ptr buffer_image = m.instantiate<sensor_msgs::Image>();
+    if (buffer_image) {
+      cv::Mat image = beam_cv::OpenCVConversions::RosImgToMat(*buffer_image);
+      ros::Time stamp = buffer_image->header.stamp;
       mapper->ProcessImage(image, stamp);
     }
 
     if (mapper->GetNumKeyframes() >= max_keyframes) {
-      //mapper->OptimizeGraph();
+      mapper->OptimizeGraph();
       mapper->OutputResults(J["output_folder"]);
       break;
     }

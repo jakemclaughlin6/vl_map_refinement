@@ -3,7 +3,6 @@
 #include <deque>
 
 #include <TCVL/pose_lookup.h>
-#include <TCVL/utils.h>
 
 #include <beam_calibration/CameraModel.h>
 #include <beam_calibration/TfTree.h>

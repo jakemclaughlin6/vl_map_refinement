@@ -1,13 +1,13 @@
 {
-  "bag_file": "/home/jake/data/M2DGR/room_01/room_01.bag",
-  "pose_file": "/home/jake/data/M2DGR/room_01/room_01.txt",
-  "cam_intrinsics_file": "/home/jake/data/M2DGR/pinhole_color.json",
-  "extrinsics_file": "/home/jake/data/M2DGR/extrinsics.json",
-  "camera_frame_id": "camera_color_optical_frame",
-  "lidar_frame_id": "velodyne",
-  "pose_frame_id": "leica",
-  "image_topic": "/camera/color/image_raw/compressed",
-  "lidar_topic": "/velodyne_points",
-  "max_keyframes": 20,
-  "output_folder": "/home/jake/data/M2DGR/room_01/results/"
+  "bag_file": "/home/jake/data/LVIO/E5/Fisheye/cropped.bag",
+  "pose_file": "/home/jake/data/LVIO/E5/Fisheye/pose_files/poses.ply",
+  "cam_intrinsics_file": "/home/jake/catkin_ws/src/TCVL/config/F1_KB.json",
+  "extrinsics_file": "/home/jake/catkin_ws/src/TCVL/config/ig_extrinsics.json",
+  "camera_frame_id": "F1_link",
+  "lidar_frame_id": "lidar_h_link",
+  "pose_frame_id": "lidar_h_link",
+  "image_topic": "/F1/downscaled/image_mono",
+  "lidar_topic": "/lidar_h/velodyne_points",
+  "max_keyframes": 40,
+  "output_folder": "/home/jake/data/LVIO/E5/Fisheye/results/"
 }

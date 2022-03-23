@@ -24,8 +24,11 @@ LidarVisualMapper::LidarVisualMapper(
     BEAM_ERROR("Invalid Poses File Path.");
     throw std::runtime_error{"Invalid Poses File Path."};
   }
-  pose_lookup_ = std::make_shared<tcvl::PoseLookup>(
-      tcvl::LoadPoses(pose_lookup_path), pose_frame_id, "world");
+  std::shared_ptr<beam_mapping::Poses> poses =
+      std::make_shared<beam_mapping::Poses>();
+  poses->LoadFromPLY(pose_lookup_path);
+  pose_lookup_ =
+      std::make_shared<tcvl::PoseLookup>(poses, pose_frame_id, "world");
 
   // Load robot extrinsics calibrations
   if (!boost::filesystem::exists(extrinsics_path) ||
@@ -54,7 +57,7 @@ LidarVisualMapper::LidarVisualMapper(
 
   // Initialize visual tracker
   std::shared_ptr<beam_cv::Detector> detector =
-      std::make_shared<beam_cv::FASTDetector>(100);
+      std::make_shared<beam_cv::FASTDetector>(200);
   tracker_ = std::make_shared<beam_cv::KLTracker>(detector, nullptr, 100);
 
   // create new graph object
@@ -116,7 +119,10 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
 
   // determine if its a keyframe
   if (previous_keyframes_.empty() ||
-      timestamp.toSec() - previous_keyframes_.back().toSec() >= 0.25) {
+      timestamp.toSec() - previous_keyframes_.back().toSec() >= 0.1) {
+    std::string img_file = "/home/jake/data/M2DGR/room_01/results/" +
+                           std::to_string(timestamp.toSec()) + ".png";
+    cv::imwrite(img_file, image);
     // push keyframe time to queue
     previous_keyframes_.push_back(timestamp);
     num_keyframes_++;
@@ -156,20 +162,20 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
               Eigen::Vector2i tmp;
               if (!cam_model_->UndistortPixel(pixel, tmp))
                 continue;
-              Eigen::Matrix4d T_CAM_WORLD;
-              if (GetCameraPose(kf_time, T_CAM_WORLD)) {
+              Eigen::Matrix4d T_world_cam;
+              if (GetCameraPose(kf_time, T_world_cam)) {
                 pixels.push_back(pixel);
-                T_cam_world_v.push_back(T_CAM_WORLD.inverse());
+                T_cam_world_v.push_back(T_world_cam.inverse());
                 observation_stamps.push_back(kf_time);
               }
             } catch (const std::out_of_range &oor) {
             }
           }
           // triangulate new points
-          if (T_cam_world_v.size() >= 3) {
+          if (T_cam_world_v.size() >= 4) {
             beam::opt<Eigen::Vector3d> point =
-                beam_cv::Triangulation::TriangulatePoint(
-                    cam_model_, T_cam_world_v, pixels, 5.0, 30);
+                beam_cv::Triangulation::TriangulatePoint(cam_model_,
+                                                         T_cam_world_v, pixels);
             if (point.has_value()) {
               AddLandmark(point.value(), id);
               num_lms++;
@@ -184,6 +190,8 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
       }
     }
 
+    std::cout << num_lms << std::endl;
+
     // add tightly coupled VL constraints
     ProcessLidarCoupling(timestamp);
 
@@ -194,7 +202,6 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
   }
 }
 
-// TODO
 void LidarVisualMapper::ProcessLidarCoupling(const ros::Time &kf_time) {
 
   int R = 9;
@@ -291,6 +298,7 @@ void LidarVisualMapper::OptimizeGraph() {
   options.minimizer_type = ceres::TRUST_REGION;
   options.linear_solver_type = ceres::SPARSE_SCHUR;
   options.preconditioner_type = ceres::SCHUR_JACOBI;
+  options.max_num_iterations = 30;
   graph_->optimize(options);
 }
 
@@ -299,6 +307,8 @@ void LidarVisualMapper::OutputResults(const std::string &folder) {
     BEAM_ERROR("Invalid output folder.");
     throw std::runtime_error{"Invalid output folder."};
   }
+
+  pcl::PointCloud<pcl::PointXYZ> landmark_cloud;
   // create ordered map of poses keyed by timestamp
   std::map<double, std::vector<double>> poses;
   for (auto &var : graph_->getVariables()) {
@@ -307,6 +317,9 @@ void LidarVisualMapper::OutputResults(const std::string &folder) {
 
     fuse_variables::Orientation3DStamped::SharedPtr q =
         fuse_variables::Orientation3DStamped::make_shared();
+
+    fuse_variables::Point3DLandmark::SharedPtr landmark =
+        fuse_variables::Point3DLandmark::make_shared();
 
     if (var.type() == q->type()) {
       *q = dynamic_cast<const fuse_variables::Orientation3DStamped &>(var);
@@ -318,8 +331,14 @@ void LidarVisualMapper::OutputResults(const std::string &folder) {
       std::vector<double> pose_vector{p->x(), p->y(), p->z(), q->w(),
                                       q->x(), q->y(), q->z()};
       poses[q->stamp().toSec()] = pose_vector;
+    } else if (var.type() == landmark->type()) {
+      *landmark = dynamic_cast<const fuse_variables::Point3DLandmark &>(var);
+      pcl::PointXYZ point(landmark->x(), landmark->y(), landmark->z());
+      landmark_cloud.points.push_back(point);
     }
   }
+  beam::SavePointCloud<pcl::PointXYZ>(folder + "/landmarks.pcd", landmark_cloud,
+                                      beam::PointCloudFileType::PCDBINARY);
 
   // output results
   std::ofstream outfile(folder + "/result_poses.txt");
@@ -327,22 +346,29 @@ void LidarVisualMapper::OutputResults(const std::string &folder) {
   for (auto &pose : poses) {
     double timestamp = pose.first;
     std::vector<double> pose_vector = pose.second;
-    // add pose to a file in the given folder
-    std::stringstream line;
-    line << std::fixed;
-    line << timestamp << " ";
-    line << pose_vector[0] << " " << pose_vector[1] << " " << pose_vector[2]
-         << " " << pose_vector[3] << " " << pose_vector[4] << " "
-         << pose_vector[5] << " " << pose_vector[6] << std::endl;
-    outfile << line.str();
-    // add frame poses to cloud and save in given folder
+    // invert pose to output as input
     Eigen::Matrix4d T_WORLD_BASELINK;
     Eigen::Vector3d position(pose_vector[0], pose_vector[1], pose_vector[2]);
     Eigen::Quaterniond orientation(pose_vector[3], pose_vector[4],
                                    pose_vector[5], pose_vector[6]);
     beam::QuaternionAndTranslationToTransformMatrix(orientation, position,
                                                     T_WORLD_BASELINK);
-    frame_cloud = beam::AddFrameToCloud(frame_cloud, T_WORLD_BASELINK, 0.001);
+    Eigen::Matrix4d T_BASELINK_WORLD = T_WORLD_BASELINK.inverse();
+    beam::TransformMatrixToQuaternionAndTranslation(T_BASELINK_WORLD,
+                                                    orientation, position);
+
+    // add pose to a file in the given folder
+    std::stringstream line;
+    line << std::fixed;
+    line << timestamp << " ";
+    line << position[0] << " " << position[1] << " " << position[2] << " "
+         << orientation.w() << " " << orientation.x() << " " << orientation.y()
+         << " " << orientation.z() << std::endl;
+    outfile << line.str();
+
+    // add pose to frame cloud
+    Eigen::Matrix4d T_WORLD_CAM = T_WORLD_BASELINK * T_cam_baselink_.inverse();
+    frame_cloud = beam::AddFrameToCloud(frame_cloud, T_WORLD_CAM, 0.001);
   }
   beam::SavePointCloud<pcl::PointXYZRGB>(folder + "/frames.pcd", frame_cloud,
                                          beam::PointCloudFileType::PCDBINARY);
@@ -491,4 +517,5 @@ LidarVisualMapper::PerturbPose(const Eigen::Matrix4d &T_WORLD_SENSOR,
   beam::QuaternionAndTranslationToTransformMatrix(q, p, output);
   return output;
 }
+
 } // namespace tcvl
