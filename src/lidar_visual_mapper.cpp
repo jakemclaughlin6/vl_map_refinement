@@ -5,6 +5,7 @@
 #include <beam_cv/detectors/Detectors.h>
 #include <beam_cv/geometry/Triangulation.h>
 #include <beam_depth/DepthMap.h>
+#include <beam_depth/Utils.h>
 #include <beam_utils/pointclouds.h>
 #include <boost/filesystem.hpp>
 
@@ -28,8 +29,8 @@ LidarVisualMapper::LidarVisualMapper(
   std::shared_ptr<beam_mapping::Poses> poses =
       std::make_shared<beam_mapping::Poses>();
   poses->LoadFromPLY(pose_lookup_path);
-  pose_lookup_ =
-      std::make_shared<vl_map_refinement::PoseLookup>(poses, pose_frame_id, "world");
+  pose_lookup_ = std::make_shared<vl_map_refinement::PoseLookup>(
+      poses, pose_frame_id, "world");
 
   // Load robot extrinsics calibrations
   if (!boost::filesystem::exists(extrinsics_path) ||
@@ -63,9 +64,6 @@ LidarVisualMapper::LidarVisualMapper(
 
   // create new graph object
   graph_ = std::make_shared<fuse_graphs::HashGraph>();
-
-  // initialize local point cloud
-  current_cloud_ = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
 
   // get an average trajectory length for the trajectory
   total_trajectory_m_ = 0;
@@ -108,8 +106,11 @@ void LidarVisualMapper::AddLidarScan(
   pcl::PointCloud<pcl::PointXYZ> cloud_in_world_frame;
   pcl::transformPointCloud(cloud, cloud_in_world_frame, T_WORLD_LIDAR);
 
-  // add to aggregate cloud
-  *current_cloud_ += cloud_in_world_frame;
+  current_clouds_.push_back(cloud_in_world_frame);
+
+  if (current_clouds_.size() >= 2) {
+    current_clouds_.pop_front();
+  }
 }
 
 void LidarVisualMapper::ProcessImage(const cv::Mat &image,
@@ -120,7 +121,7 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
   // determine if its a keyframe
   if (previous_keyframes_.empty() ||
       timestamp.toSec() - previous_keyframes_.back().toSec() >= 0.1) {
-    std::string img_file = "/home/jake/data/M2DGR/room_01/results/" +
+    std::string img_file = "/home/jake/data/keyframes_bw/" +
                            std::to_string(timestamp.toSec()) + ".png";
     cv::imwrite(img_file, image);
     // push keyframe time to queue
@@ -193,20 +194,37 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
 
 void LidarVisualMapper::ProcessLidarCoupling(const ros::Time &kf_time) {
   // TODO
-  int R = 9;
-  // // transform into current camera frame
-  // Eigen::Matrix4d T_CAM_WORLD;
-  // if (GetCameraPose(kf_time, T_CAM_WORLD)) {
-  //   // transform the current point cloud into the camera frame
-  //   std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>> cloud_in_camera_frame =
-  //       std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
-  //   pcl::transformPointCloud(*current_cloud_, *cloud_in_camera_frame,
-  //                            T_CAM_WORLD);
+  Eigen::Matrix4d T_WORLD_CAM;
+  if (GetCameraPose(kf_time, T_WORLD_CAM)) {
 
-  //   // extract depth map using projection
-  //   beam_depth::DepthMap dm(cam_model_, cloud_in_camera_frame);
-  //   dm.ExtractDepthMapProjection(30);
-  //   cv::Mat depth_image = dm.GetDepthImage();
+    // aggregate current scans
+    pcl::PointCloud<pcl::PointXYZ> aggregate_cloud;
+    for (auto &c : current_clouds_) {
+      aggregate_cloud += c;
+    }
+
+    // transform the current point cloud into the camera frame
+    std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>> cloud_in_camera_frame =
+        std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
+    Eigen::Matrix4d T_CAM_WORLD = T_WORLD_CAM.inverse();
+    pcl::transformPointCloud(aggregate_cloud, *cloud_in_camera_frame,
+                             T_CAM_WORLD);
+
+    // extract depth map using projection
+    beam_depth::DepthMap dm(cam_model_, cloud_in_camera_frame);
+    dm.ExtractDepthMapProjection(30);
+    cv::Mat depth_image = dm.GetDepthImage();
+    cv::Mat di_vis = beam_depth::VisualizeDepthImage(depth_image);
+    std::string file = "/home/jake/data/keyframes_depth/" +
+                       std::to_string(kf_time.toSec()) + ".png";
+    cv::imwrite(file, di_vis);
+  }
+
+  if (current_clouds_.size() >= 2) {
+    current_clouds_.pop_front();
+  }
+  // 1. find 3 closest depths to the landmark (with consistent depth)
+  // 2. if the current depth and the lidar depth isnt coherent then its an outlier
 
   //   // loop through all landmarks in image and do neighbourhood search
   //   std::vector<uint64_t> landmarks =
@@ -276,7 +294,6 @@ void LidarVisualMapper::ProcessLidarCoupling(const ros::Time &kf_time) {
   //     }
   //   }
   // }
-  current_cloud_->points.clear();
 }
 
 void LidarVisualMapper::OptimizeGraph() {
@@ -410,8 +427,8 @@ void LidarVisualMapper::AddReprojectionConstraint(
   if (position && orientation && lm) {
     fuse_constraints::ReprojectionConstraint::SharedPtr vis_constraint =
         fuse_constraints::ReprojectionConstraint::make_shared(
-            "vl_map_refinement", *orientation, *position, *lm, pixel, T_cam_baselink_,
-            cam_model_);
+            "vl_map_refinement", *orientation, *position, *lm, pixel,
+            T_cam_baselink_, cam_model_);
     graph_->addConstraint(vis_constraint);
   }
 }

@@ -88,7 +88,9 @@ private:
 
   size_t num_keyframes_{0};
 
-  std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>
-      current_cloud_; // in world frame
+  size_t num_scans_in_cloud_{0};
+
+  std::deque<pcl::PointCloud<pcl::PointXYZ>> current_clouds_;
+
 };
 } // namespace vl_map_refinement
