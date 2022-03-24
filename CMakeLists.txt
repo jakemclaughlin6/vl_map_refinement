@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
-project(tcvl)
+project(vl_map_refinement)
 
 if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 14)
@@ -101,17 +101,17 @@ target_link_libraries(
 #################
 ## Executables ##
 #################
-add_executable(${PROJECT_NAME}_vl_study_main
-	src/vl_study_main.cpp
+add_executable(${PROJECT_NAME}_main
+	src/main.cpp
 )
-add_dependencies(${PROJECT_NAME}_vl_study_main
+add_dependencies(${PROJECT_NAME}_main
   ${catkin_EXPORTED_TARGETS}
 )
-target_include_directories(${PROJECT_NAME}_vl_study_main
+target_include_directories(${PROJECT_NAME}_main
   PUBLIC
     ${PROJECT_NAME}
 )
-target_link_libraries(${PROJECT_NAME}_vl_study_main
+target_link_libraries(${PROJECT_NAME}_main
   ${PROJECT_NAME}
   ${catkin_LIBRARIES}
 )

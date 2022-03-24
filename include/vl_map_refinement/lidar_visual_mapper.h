@@ -2,7 +2,7 @@
 
 #include <deque>
 
-#include <TCVL/pose_lookup.h>
+#include <vl_map_refinement/pose_lookup.h>
 
 #include <beam_calibration/CameraModel.h>
 #include <beam_calibration/TfTree.h>
@@ -18,7 +18,7 @@
 #include <fuse_variables/point_3d_landmark.h>
 #include <fuse_variables/position_3d_stamped.h>
 
-namespace tcvl {
+namespace vl_map_refinement {
 
 class LidarVisualMapper {
 public:
@@ -67,7 +67,7 @@ protected:
 
 private:
   std::shared_ptr<beam_calibration::TfTree> tree_;
-  std::shared_ptr<tcvl::PoseLookup> pose_lookup_;
+  std::shared_ptr<vl_map_refinement::PoseLookup> pose_lookup_;
   std::shared_ptr<beam_calibration::CameraModel> cam_model_;
 
   std::deque<ros::Time> previous_keyframes_;
@@ -91,4 +91,4 @@ private:
   std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>
       current_cloud_; // in world frame
 };
-} // namespace tcvl
+} // namespace vl_map_refinement

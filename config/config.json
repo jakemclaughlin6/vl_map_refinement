@@ -1,8 +1,8 @@
 {
   "bag_file": "/home/jake/data/LVIO/E5/Fisheye/cropped.bag",
   "pose_file": "/home/jake/data/LVIO/E5/Fisheye/pose_files/poses.ply",
-  "cam_intrinsics_file": "/home/jake/catkin_ws/src/TCVL/config/F1_KB.json",
-  "extrinsics_file": "/home/jake/catkin_ws/src/TCVL/config/ig_extrinsics.json",
+  "cam_intrinsics_file": "/home/jake/catkin_ws/src/vl_map_refinement/config/F1_KB.json",
+  "extrinsics_file": "/home/jake/catkin_ws/src/vl_map_refinement/config/ig_extrinsics.json",
   "camera_frame_id": "F1_link",
   "lidar_frame_id": "lidar_h_link",
   "pose_frame_id": "lidar_h_link",

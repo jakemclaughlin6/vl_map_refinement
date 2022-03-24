@@ -1,6 +1,6 @@
-#include <TCVL/constraints/reprojection_constraint.h>
+#include <vl_map_refinement/constraints/reprojection_constraint.h>
 
-#include <TCVL/constraints/reprojection_functor.h>
+#include <vl_map_refinement/constraints/reprojection_functor.h>
 
 #include <fuse_loss/huber_loss.h>
 

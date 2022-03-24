@@ -1,6 +1,6 @@
-#include <TCVL/constraints/reprojection_constraint.h>
-#include <TCVL/constraints/vl_constraint.h>
-#include <TCVL/lidar_visual_mapper.h>
+#include <vl_map_refinement/constraints/reprojection_constraint.h>
+#include <vl_map_refinement/constraints/vl_constraint.h>
+#include <vl_map_refinement/lidar_visual_mapper.h>
 
 #include <beam_cv/detectors/Detectors.h>
 #include <beam_cv/geometry/Triangulation.h>
@@ -8,7 +8,7 @@
 #include <beam_utils/pointclouds.h>
 #include <boost/filesystem.hpp>
 
-namespace tcvl {
+namespace vl_map_refinement {
 
 LidarVisualMapper::LidarVisualMapper(
     const std::string &cam_model_path, const std::string &pose_lookup_path,
@@ -29,7 +29,7 @@ LidarVisualMapper::LidarVisualMapper(
       std::make_shared<beam_mapping::Poses>();
   poses->LoadFromPLY(pose_lookup_path);
   pose_lookup_ =
-      std::make_shared<tcvl::PoseLookup>(poses, pose_frame_id, "world");
+      std::make_shared<vl_map_refinement::PoseLookup>(poses, pose_frame_id, "world");
 
   // Load robot extrinsics calibrations
   if (!boost::filesystem::exists(extrinsics_path) ||
@@ -410,7 +410,7 @@ void LidarVisualMapper::AddReprojectionConstraint(
   if (position && orientation && lm) {
     fuse_constraints::ReprojectionConstraint::SharedPtr vis_constraint =
         fuse_constraints::ReprojectionConstraint::make_shared(
-            "TCVL", *orientation, *position, *lm, pixel, T_cam_baselink_,
+            "vl_map_refinement", *orientation, *position, *lm, pixel, T_cam_baselink_,
             cam_model_);
     graph_->addConstraint(vis_constraint);
   }
@@ -480,4 +480,4 @@ bool LidarVisualMapper::GetCameraPose(const ros::Time &stamp,
   }
 }
 
-} // namespace tcvl
+} // namespace vl_map_refinement

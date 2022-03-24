@@ -1,8 +1,8 @@
-#include <TCVL/pose_lookup.h>
+#include <vl_map_refinement/pose_lookup.h>
 #include <beam_utils/log.h>
 #include <geometry_msgs/TransformStamped.h>
 
-namespace tcvl {
+namespace vl_map_refinement {
 
 PoseLookup::PoseLookup(const std::shared_ptr<beam_mapping::Poses> poses,
                        const std::string &moving_frame,
@@ -70,4 +70,4 @@ bool PoseLookup::GetT_WORLD_SENSOR(Eigen::Matrix4d &T_WORLD_SENSOR,
 
   return true;
 }
-} // namespace tcvl
+} // namespace vl_map_refinement

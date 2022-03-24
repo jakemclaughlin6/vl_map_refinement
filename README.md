@@ -1,9 +1,8 @@
-# TCVL
+# vl_map_refinement
 
 ## Description:
 
-This repo implements a case study on different types of tightly coupled visual to lidar constraints.
-This repository makes use of the [M2DGR](https://github.com/SJTU-ViSYS/M2DGR) dataset with calibrations converted into libbeam's formatting.
+This repo implements trajectory refinement using typical visual reprojection constraints and tightly coupled visual-lidar constraints, given an initial trajectory estimate (from odometry or SLAM)
 
 ## Dependencies:
 

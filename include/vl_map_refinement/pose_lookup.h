@@ -4,7 +4,7 @@
 #include <beam_mapping/Poses.h>
 #include <tf2/buffer_core.h>
 
-namespace tcvl {
+namespace vl_map_refinement {
 /**
  * @brief This class can be used to estimate the pose of any frame given its
  * timestamp and a tf2::BufferCore which contains the poses.
@@ -39,4 +39,4 @@ private:
   std::string moving_frame_;
   std::string world_frame_;
 };
-} // namespace tcvl
+} // namespace vl_map_refinement

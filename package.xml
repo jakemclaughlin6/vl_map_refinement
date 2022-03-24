@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>tcvl</name>
+  <name>vl_map_refinement</name>
   <version>0.1.0</version>
   <description>Tools for testing visual-lidar constraints</description>
 

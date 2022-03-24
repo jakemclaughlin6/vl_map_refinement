@@ -3,7 +3,7 @@
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/PointCloud2.h>
 
-#include <TCVL/lidar_visual_mapper.h>
+#include <vl_map_refinement/lidar_visual_mapper.h>
 
 #include <beam_cv/OpenCVConversions.h>
 
@@ -47,8 +47,8 @@ int main(int argc, char *argv[]) {
   ros::Time end_time = view.getEndTime();
 
   // Initialize lidar-visual mapper to do the bulk of the work
-  std::shared_ptr<tcvl::LidarVisualMapper> mapper =
-      std::make_shared<tcvl::LidarVisualMapper>(
+  std::shared_ptr<vl_map_refinement::LidarVisualMapper> mapper =
+      std::make_shared<vl_map_refinement::LidarVisualMapper>(
           J["cam_intrinsics_file"], J["pose_file"], J["extrinsics_file"],
           J["camera_frame_id"], J["lidar_frame_id"], J["pose_frame_id"],
           start_time, end_time);
