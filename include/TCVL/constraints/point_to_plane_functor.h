@@ -5,9 +5,7 @@
 #include <fuse_core/macros.h>
 #include <fuse_core/util.h>
 
-#include <beam_calibration/CameraModel.h>
 #include <beam_cv/Utils.h>
-#include <beam_optimization/CamPoseReprojectionCost.h>
 #include <beam_utils/math.h>
 
 #include <ceres/autodiff_cost_function.h>
@@ -16,35 +14,29 @@
 #include <ceres/rotation.h>
 namespace fuse_constraints {
 
-class ReprojectionFunctor {
+class PointToPlaneCostFunctor {
 public:
   FUSE_MAKE_ALIGNED_OPERATOR_NEW();
 
   /**
-   * @brief Construct a cost function instance
-   *
-   * @param pixel_measurement The pixel location of feature in the image
-   * @param cam_model The camera intrinsics for projection
+   * @brief Construct a cost function for a point to plane error
+   * @param P_REF1 reference surface point 1 (in camera frame)
+   * @param P_REF2 reference surface point 2 (in camera frame)
+   * @param P_REF3 reference surface point 2 (in camera frame)
    * @param T_cam_baselink transform from baselink frame to camera frame
    */
-  ReprojectionFunctor(
-      const Eigen::Vector2d &pixel_measurement,
-      const std::shared_ptr<beam_calibration::CameraModel> cam_model,
-      const Eigen::Matrix4d &T_cam_baselink)
-      : pixel_measurement_(pixel_measurement), cam_model_(cam_model),
-        T_cam_baselink_(T_cam_baselink) {
-    // projection functor
-    compute_projection.reset(new ceres::CostFunctionToFunctor<2, 3>(
-        new ceres::NumericDiffCostFunction<
-            beam_optimization::CameraProjectionFunctor, ceres::CENTRAL, 2, 3>(
-            new beam_optimization::CameraProjectionFunctor(
-                cam_model_, pixel_measurement_))));
-  }
+  PointToPlaneCostFunctor(const Eigen::Vector3d &P_REF1,
+                          const Eigen::Vector3d &P_REF2,
+                          const Eigen::Vector3d &P_REF3,
+                          const Eigen::Matrix4d &T_cam_baselink)
+      : P_REF1_(P_REF1), P_REF2_(P_REF2), P_REF3_(P_REF3),
+        T_cam_baselink_(T_cam_baselink) {}
 
   template <typename T>
   bool operator()(const T *const R_WORLD_BASELINK,
                   const T *const t_WORLD_BASELINK, const T *const P_WORLD,
                   T *residual) const {
+
     // transform point from world frame into camera frame
     Eigen::Matrix<T, 4, 4> T_CAM_BASELINK = T_cam_baselink_.cast<T>();
 
@@ -84,27 +76,51 @@ public:
     P_CAMERA[1] = P_CAM[1];
     P_CAMERA[2] = P_CAM[2];
 
-    const T *P_CAMERA_const = &(P_CAMERA[0]);
+    // cast plane member variables
+    Eigen::Matrix<T, 3, 1> _P_REF1 = P_REF1_.cast<T>();
+    Eigen::Matrix<T, 3, 1> _P_REF2 = P_REF2_.cast<T>();
+    Eigen::Matrix<T, 3, 1> _P_REF3 = P_REF3_.cast<T>();
 
-    // project point into pixel space
-    T pixel_projected[2];
-    (*compute_projection)(P_CAMERA_const, &(pixel_projected[0]));
+    /*
+     * e = distance from point to line
+     *   = | (P_REF - P_REF1) (P_REF1 - P_REF2) x (P_REF1 - P_REF3) |
+     *     ----------------------------------------------------------
+     *             | (P_REF1 - P_REF2) x (P_REF1 - P_REF3) |
+     *
+     *   = | dR1 (d12 x d12) |
+     *     -------------------
+     *       | d12 x d13 |
+     *
+     *   Where P_REF = T_REF_TGT * P_TGT
+     *
+     */
+    T d12[3], d13[3], dR1[3];
+    d12[0] = _P_REF1[0] - _P_REF2[0];
+    d12[1] = _P_REF1[1] - _P_REF2[1];
+    d12[2] = _P_REF1[2] - _P_REF2[2];
 
-    // compute the reprojection residual
-    Eigen::Matrix<T, 2, 1> result;
-    result[0] = (pixel_measurement_.cast<T>()[0] - pixel_projected[0]);
-    result[1] = (pixel_measurement_.cast<T>()[1] - pixel_projected[1]);
+    d13[0] = _P_REF1[0] - _P_REF3[0];
+    d13[1] = _P_REF1[1] - _P_REF3[1];
+    d13[2] = _P_REF1[2] - _P_REF3[2];
 
-    // fill residual
-    residual[0] = result[0];
-    residual[1] = result[1];
+    dR1[0] = P_CAMERA[0] - _P_REF1[0];
+    dR1[1] = P_CAMERA[1] - _P_REF1[1];
+    dR1[2] = P_CAMERA[2] - _P_REF1[2];
+
+    T cross[3];
+    ceres::CrossProduct(d12, d13, cross);
+    T norm =
+        sqrt(cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]);
+
+    residual[0] = ceres::DotProduct(dR1, cross) / norm;
+
     return true;
   }
 
 private:
-  Eigen::Vector2d pixel_measurement_;
-  std::shared_ptr<beam_calibration::CameraModel> cam_model_;
-  std::unique_ptr<ceres::CostFunctionToFunctor<2, 3>> compute_projection;
+  Eigen::Vector3d P_REF1_;
+  Eigen::Vector3d P_REF2_;
+  Eigen::Vector3d P_REF3_;
   Eigen::Matrix4d T_cam_baselink_;
 };
 

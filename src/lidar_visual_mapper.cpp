@@ -1,4 +1,5 @@
 #include <TCVL/constraints/reprojection_constraint.h>
+#include <TCVL/constraints/vl_constraint.h>
 #include <TCVL/lidar_visual_mapper.h>
 
 #include <beam_cv/detectors/Detectors.h>
@@ -141,11 +142,8 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
       for (auto &id : landmarks) {
         fuse_variables::Point3DLandmark::SharedPtr lm = GetLandmark(id);
         if (lm) {
-          Eigen::Vector2d pixel = tracker_->Get(timestamp, id);
-          Eigen::Vector2i tmp;
-          if (!cam_model_->UndistortPixel(pixel.cast<int>(), tmp))
-            continue;
-          AddReprojectionConstraint(timestamp, id, pixel);
+          AddReprojectionConstraint(timestamp, id,
+                                    tracker_->Get(timestamp, id));
         } else {
           // get measurements of landmark for triangulation
           std::vector<Eigen::Matrix4d, beam::AlignMat4d> T_cam_world_v;
@@ -155,9 +153,6 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
           for (auto &kf_time : previous_keyframes_) {
             try {
               Eigen::Vector2i pixel = tracker_->Get(kf_time, id).cast<int>();
-              Eigen::Vector2i tmp;
-              if (!cam_model_->UndistortPixel(pixel, tmp))
-                continue;
               Eigen::Matrix4d T_world_cam;
               if (GetCameraPose(kf_time, T_world_cam)) {
                 pixels.push_back(pixel);
@@ -170,8 +165,8 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
           // triangulate new points
           if (T_cam_world_v.size() >= 4) {
             beam::opt<Eigen::Vector3d> point =
-                beam_cv::Triangulation::TriangulatePoint(cam_model_,
-                                                         T_cam_world_v, pixels);
+                beam_cv::Triangulation::TriangulatePoint(
+                    cam_model_, T_cam_world_v, pixels, 30, 5.0);
             if (point.has_value()) {
               AddLandmark(point.value(), id);
               num_lms++;
@@ -186,8 +181,6 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
       }
     }
 
-    std::cout << num_lms << std::endl;
-
     // add tightly coupled VL constraints
     ProcessLidarCoupling(timestamp);
 
@@ -199,7 +192,7 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
 }
 
 void LidarVisualMapper::ProcessLidarCoupling(const ros::Time &kf_time) {
-
+  // TODO
   int R = 9;
   // // transform into current camera frame
   // Eigen::Matrix4d T_CAM_WORLD;

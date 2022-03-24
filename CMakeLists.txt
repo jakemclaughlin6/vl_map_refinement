@@ -63,6 +63,7 @@ add_library(
   src/pose_lookup.cpp
   src/lidar_visual_mapper.cpp
   src/constraints/reprojection_constraint.cpp
+  src/constraints/vl_constraint.cpp
 )
 
 include_directories(
