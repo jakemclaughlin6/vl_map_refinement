@@ -183,7 +183,7 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
     }
 
     // add tightly coupled VL constraints
-    ProcessLidarCoupling(timestamp);
+    // ProcessLidarCoupling(timestamp);
 
     // manage keyframes
     if (previous_keyframes_.size() > 20) {
@@ -193,7 +193,7 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
 }
 
 void LidarVisualMapper::ProcessLidarCoupling(const ros::Time &kf_time) {
-  // TODO
+  const int R = 9;
   Eigen::Matrix4d T_WORLD_CAM;
   if (GetCameraPose(kf_time, T_WORLD_CAM)) {
 
@@ -214,86 +214,101 @@ void LidarVisualMapper::ProcessLidarCoupling(const ros::Time &kf_time) {
     beam_depth::DepthMap dm(cam_model_, cloud_in_camera_frame);
     dm.ExtractDepthMapProjection(30);
     cv::Mat depth_image = dm.GetDepthImage();
-    cv::Mat di_vis = beam_depth::VisualizeDepthImage(depth_image);
-    std::string file = "/home/jake/data/keyframes_depth/" +
-                       std::to_string(kf_time.toSec()) + ".png";
-    cv::imwrite(file, di_vis);
+
+    // find visual-lidar correspondences
+    std::vector<uint64_t> landmarks = tracker_->GetLandmarkIDsInImage(kf_time);
+    for (auto &id : landmarks) {
+      fuse_variables::Point3DLandmark::SharedPtr lm = GetLandmark(id);
+      if (!lm)
+        continue;
+
+      Eigen::Vector2i pixel = tracker_->Get(kf_time, id).cast<int>();
+
+      // compute search area
+      int start_col = pixel[0] - R, end_col = pixel[0] + R,
+          start_row = pixel[1] - R, end_row = pixel[1] + R;
+
+      // vector of <pixel distance, depth>
+      std::vector<double> neighbourhood_depths;
+      std::vector<double> neighbourhood_distances;
+      std::vector<Eigen::Vector2i> neighbourhood_pixels;
+
+      for (int col = start_col; col < end_col; col++) {
+        for (int row = start_row; row < end_row; row++) {
+          Eigen::Vector2i search_point(col, row);
+
+          double depth = depth_image.at<float>(row, col);
+
+          if (col < 0 || row < 0 || col > depth_image.cols ||
+              row > depth_image.rows || depth == 0)
+            continue;
+
+          neighbourhood_depths.push_back(depth);
+          neighbourhood_distances.push_back(
+              beam::distance(pixel, search_point));
+          neighbourhood_pixels.push_back(search_point);
+        }
+      }
+
+      // 1. Remove any occluded points (20cm threshold)
+      std::vector<double> filtered_depths;
+      std::vector<double> filtered_distances;
+      std::vector<Eigen::Vector2i> filtered_pixels;
+      double min_depth =
+          neighbourhood_depths[std::min_element(neighbourhood_depths.begin(),
+                                                neighbourhood_depths.end()) -
+                               neighbourhood_depths.begin()];
+      for (int i = 0; i < neighbourhood_depths.size(); i++) {
+        if (neighbourhood_depths[i] < min_depth + 0.2) {
+          filtered_depths.push_back(neighbourhood_depths[i]);
+          filtered_distances.push_back(neighbourhood_distances[i]);
+          filtered_pixels.push_back(neighbourhood_pixels[i]);
+        }
+      }
+
+      // 2. find 3 closest points to the landmark
+      if (filtered_distances.size() < 3)
+        continue;
+
+      std::vector<Eigen::Vector2i> matching_pixels;
+      std::vector<double> matching_depths;
+      for (int i = 0; i < 3; i++) {
+        int min_index = std::min_element(filtered_distances.begin(),
+                                         filtered_distances.end()) -
+                        filtered_distances.begin();
+
+        matching_pixels.push_back(filtered_pixels[min_index]);
+        matching_depths.push_back(filtered_depths[min_index]);
+
+        filtered_depths.erase(filtered_depths.begin() + min_index);
+        filtered_distances.erase(filtered_distances.begin() + min_index);
+        filtered_pixels.erase(filtered_pixels.begin() + min_index);
+      }
+
+      // 3. get matching points in camera frame
+      std::vector<Eigen::Vector3d> matching_points;
+      for (int i = 0; i < 3; i++) {
+        Eigen::Vector3d direction;
+        if (cam_model_->BackProject(matching_pixels[i], direction)) {
+          Eigen::Vector3d coords = matching_depths[i] * direction.normalized();
+          matching_points.push_back(coords);
+        }
+      }
+
+      // 4. add constraint to the graph
+      fuse_constraints::VLConstraint::SharedPtr vl_constraint =
+          fuse_constraints::VLConstraint::make_shared(
+              "vl_map_refinement", *GetOrientation(kf_time),
+              *GetPosition(kf_time), *lm, T_cam_baselink_, matching_points[0],
+              matching_points[1], matching_points[2]);
+      graph_->addConstraint(vl_constraint);
+    }
+
+    // cv::Mat di_vis = beam_depth::VisualizeDepthImage(depth_image);
+    // std::string file = "/home/jake/data/keyframes_depth/" +
+    //                    std::to_string(kf_time.toSec()) + ".png";
+    // cv::imwrite(file, di_vis);
   }
-
-  if (current_clouds_.size() >= 2) {
-    current_clouds_.pop_front();
-  }
-  // 1. find 3 closest depths to the landmark (with consistent depth)
-  // 2. if the current depth and the lidar depth isnt coherent then its an outlier
-
-  //   // loop through all landmarks in image and do neighbourhood search
-  //   std::vector<uint64_t> landmarks =
-  //   tracker_->GetLandmarkIDsInImage(kf_time); for (auto &id : landmarks) {
-  //     Eigen::Vector2i pixel = tracker_->Get(kf_time, id).cast<int>();
-
-  //     // compute 4 corners of search area
-  //     int start_col = pixel[0] - R, end_col = pixel[0] + R,
-  //         start_row = pixel[1] - R, end_row = pixel[1] + R;
-
-  //     // get points in landmark neighbourhood <distance,depth,pixel>
-  //     std::vector<std::tuple<double, double, Eigen::Vector2i>>
-  //         neighbourhood_points;
-  //     for (int col = start_col; col < end_col; col++) {
-  //       for (int row = start_row; row < end_row; row++) {
-  //         Eigen::Vector2i search_point(col, row);
-  //         double depth = depth_image.at<float>(row, col);
-  //         if (col < 0 || row < 0 || col > depth_image.cols ||
-  //             row > depth_image.rows || depth == 0)
-  //           continue;
-  //         double distance = beam::distance(pixel, search_point);
-  //        // neighbourhood_points.push_back(std::make_tuple(distance, depth));
-  //       }
-  //     }
-
-  //     // sort by pixel distance to current landmark
-  //     std::sort(neighbourhood_points.begin(), neighbourhood_points.end());
-
-  //     // compute mean, median and stddev of the depths
-  //     std::vector<double> depths;
-  //     for (auto &tuple : neighbourhood_points) {
-  //       std::cout << std::get<0>(tuple) << std::endl;
-  //       //depths.push_back(d);
-  //     }
-  //     double median = depths[depths.size() / 2];
-  //     double sum = std::accumulate(depths.begin(), depths.end(), 0.0);
-  //     double mean = sum / depths.size();
-  //     double sq_sum =
-  //         std::inner_product(depths.begin(), depths.end(), depths.begin(),
-  //         0.0);
-  //     double stdev = std::sqrt(sq_sum / depths.size() - mean * mean);
-
-  //     // filter out points that are outside of 1 stddev
-  //     std::vector<std::tuple<double, double, Eigen::Vector2i>>
-  //         valid_neighbourhood_points;
-  //     for (auto &tuple : neighbourhood_points) {
-  //       if (std::get<1>(tuple) < median + stdev ||
-  //           std::get<1>(tuple) > median - stdev) {
-  //         valid_neighbourhood_points.push_back(tuple);
-  //       }
-  //     }
-
-  //     if (valid_neighbourhood_points.size() >= 3) {
-  //       // get 3 closest points
-  //       std::vector<Eigen::Vector3d> matching_points;
-  //       for (int i = 0; i < 3; i++) {
-  //         Eigen::Vector2i pixel = std::get<2>(valid_neighbourhood_points[i]);
-  //         double depth = std::get<1>(valid_neighbourhood_points[i]);
-  //         Eigen::Vector3d direction;
-  //         if (cam_model_->BackProject(pixel, direction)) {
-  //           Eigen::Vector3d coords = depth * direction;
-  //           matching_points.push_back(coords);
-  //         }
-  //       }
-
-  //       // TODO: add vl constraint
-  //     }
-  //   }
-  // }
 }
 
 void LidarVisualMapper::OptimizeGraph() {
