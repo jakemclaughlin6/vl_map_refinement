@@ -68,9 +68,10 @@ int main(int argc, char *argv[]) {
     if (buffer_image) {
       cv::Mat image = beam_cv::OpenCVConversions::RosImgToMat(*buffer_image);
       ros::Time stamp = buffer_image->header.stamp;
+      std::cout << stamp << ": " << mapper->GetNumKeyframes() << "/"
+                << max_keyframes << std::endl;
       mapper->ProcessImage(image, stamp);
     }
-
     if (mapper->GetNumKeyframes() >= max_keyframes) {
       mapper->OptimizeGraph();
       mapper->OutputResults(J["output_folder"]);

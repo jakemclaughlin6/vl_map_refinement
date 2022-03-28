@@ -121,7 +121,7 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
   // determine if its a keyframe
   if (previous_keyframes_.empty() ||
       timestamp.toSec() - previous_keyframes_.back().toSec() >= 0.1) {
-        
+
     // std::string img_file = "/home/jake/data/keyframes_bw/" +
     //                        std::to_string(timestamp.toSec()) + ".png";
     // cv::imwrite(img_file, image);
@@ -321,7 +321,7 @@ void LidarVisualMapper::OptimizeGraph() {
   options.minimizer_type = ceres::TRUST_REGION;
   options.linear_solver_type = ceres::SPARSE_SCHUR;
   options.preconditioner_type = ceres::SCHUR_JACOBI;
-  options.max_num_iterations = 30;
+  options.max_num_iterations = 80;
   graph_->optimize(options);
 }
 
@@ -369,27 +369,22 @@ void LidarVisualMapper::OutputResults(const std::string &folder) {
   for (auto &pose : poses) {
     double timestamp = pose.first;
     std::vector<double> pose_vector = pose.second;
-    // invert pose to output as input
-    Eigen::Matrix4d T_WORLD_BASELINK;
+    // add pose to a file in the given folder
     Eigen::Vector3d position(pose_vector[0], pose_vector[1], pose_vector[2]);
     Eigen::Quaterniond orientation(pose_vector[3], pose_vector[4],
                                    pose_vector[5], pose_vector[6]);
-    beam::QuaternionAndTranslationToTransformMatrix(orientation, position,
-                                                    T_WORLD_BASELINK);
-    Eigen::Matrix4d T_BASELINK_WORLD = T_WORLD_BASELINK.inverse();
-    beam::TransformMatrixToQuaternionAndTranslation(T_BASELINK_WORLD,
-                                                    orientation, position);
-
-    // add pose to a file in the given folder
     std::stringstream line;
     line << std::fixed;
     line << timestamp << " ";
     line << position[0] << " " << position[1] << " " << position[2] << " "
-         << orientation.w() << " " << orientation.x() << " " << orientation.y()
-         << " " << orientation.z() << std::endl;
+         << orientation.x() << " " << orientation.y() << " " << orientation.z()
+         << " " << orientation.w() << std::endl;
     outfile << line.str();
 
     // add pose to frame cloud
+    Eigen::Matrix4d T_WORLD_BASELINK;
+    beam::QuaternionAndTranslationToTransformMatrix(orientation, position,
+                                                    T_WORLD_BASELINK);
     frame_cloud = beam::AddFrameToCloud(frame_cloud, T_WORLD_BASELINK, 0.001);
   }
   beam::SavePointCloud<pcl::PointXYZRGB>(folder + "/frames.pcd", frame_cloud,
