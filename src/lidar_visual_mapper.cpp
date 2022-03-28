@@ -121,9 +121,11 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
   // determine if its a keyframe
   if (previous_keyframes_.empty() ||
       timestamp.toSec() - previous_keyframes_.back().toSec() >= 0.1) {
-    std::string img_file = "/home/jake/data/keyframes_bw/" +
-                           std::to_string(timestamp.toSec()) + ".png";
-    cv::imwrite(img_file, image);
+        
+    // std::string img_file = "/home/jake/data/keyframes_bw/" +
+    //                        std::to_string(timestamp.toSec()) + ".png";
+    // cv::imwrite(img_file, image);
+
     // push keyframe time to queue
     previous_keyframes_.push_back(timestamp);
     num_keyframes_++;
