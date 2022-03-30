@@ -8,6 +8,6 @@
   "pose_frame_id": "lidar_h_link",
   "image_topic": "/F1/downscaled/image_mono",
   "lidar_topic": "/lidar_h/velodyne_points",
-  "max_keyframes": 50,
+  "max_keyframes": 100,
   "output_folder": "/home/jake/data/LVIO/E5/Fisheye/results/"
 }

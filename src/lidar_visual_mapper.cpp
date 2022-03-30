@@ -1,4 +1,5 @@
 #include <vl_map_refinement/constraints/reprojection_constraint.h>
+#include <fuse_constraints/relative_pose_3d_stamped_constraint.h>
 #include <vl_map_refinement/constraints/vl_constraint.h>
 #include <vl_map_refinement/lidar_visual_mapper.h>
 
@@ -64,30 +65,6 @@ LidarVisualMapper::LidarVisualMapper(
 
   // create new graph object
   graph_ = std::make_shared<fuse_graphs::HashGraph>();
-
-  // get an average trajectory length for the trajectory
-  total_trajectory_m_ = 0;
-  int time_length = end_time_.toSec() - start_time_.toSec();
-  Eigen::Vector3d previous_position;
-  Eigen::Vector3d current_position;
-  for (size_t i = 0; i < time_length; i++) {
-    ros::Time new_time(start_time_.toSec() + (double)i);
-    Eigen::Matrix4d T_WORLD_BASELINK;
-    if (!pose_lookup_->GetT_WORLD_SENSOR(T_WORLD_BASELINK, new_time))
-      continue;
-    Eigen::Vector3d p;
-    Eigen::Quaterniond q;
-    beam::TransformMatrixToQuaternionAndTranslation(T_WORLD_BASELINK, q, p);
-    if (i == 0) {
-      previous_position = p;
-      current_position = p;
-      continue;
-    } else {
-      previous_position = current_position;
-      current_position = p;
-    }
-    total_trajectory_m_ += beam::distance(current_position, previous_position);
-  }
 }
 
 void LidarVisualMapper::AddLidarScan(
@@ -122,9 +99,6 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
   if (previous_keyframes_.empty() ||
       timestamp.toSec() - previous_keyframes_.back().toSec() >= 0.2) {
     std::cout << "Processing keyframe " << GetNumKeyframes() << std::endl;
-    // std::string img_file = "/home/jake/data/keyframes_bw/" +
-    //                        std::to_string(timestamp.toSec()) + ".png";
-    // cv::imwrite(img_file, image);
 
     // push keyframe time to queue
     previous_keyframes_.push_back(timestamp);
@@ -145,8 +119,13 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
       for (auto &id : landmarks) {
         fuse_variables::Point3DLandmark::SharedPtr lm = GetLandmark(id);
         if (lm) {
-          AddReprojectionConstraint(timestamp, id,
-                                    tracker_->Get(timestamp, id));
+          // check if pixel can be undistorted
+          Eigen::Vector2d pixel = tracker_->Get(timestamp, id);
+          Eigen::Vector2i tmp;
+          if (!cam_model_->UndistortPixel(pixel.cast<int>(), tmp))
+            continue;
+
+          AddReprojectionConstraint(timestamp, id, pixel);
         } else {
           // get measurements of landmark for triangulation
           std::vector<Eigen::Matrix4d, beam::AlignMat4d> T_cam_world_v;
@@ -155,10 +134,15 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
 
           for (auto &kf_time : previous_keyframes_) {
             try {
-              Eigen::Vector2i pixel = tracker_->Get(kf_time, id).cast<int>();
+              // check if pixel can be undistorted
+              Eigen::Vector2d pixel = tracker_->Get(kf_time, id);
+              Eigen::Vector2i tmp;
+              if (!cam_model_->UndistortPixel(pixel.cast<int>(), tmp))
+                continue;
+
               Eigen::Matrix4d T_world_cam;
               if (GetCameraPose(kf_time, T_world_cam)) {
-                pixels.push_back(pixel);
+                pixels.push_back(pixel.cast<int>());
                 T_cam_world_v.push_back(T_world_cam.inverse());
                 observation_stamps.push_back(kf_time);
               }
@@ -184,6 +168,12 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
       }
     }
 
+    // // add relative pose constraint
+    // if (previous_keyframes_.size() >= 2) {
+    //   AddRelativePoseConstraint(
+    //       timestamp, previous_keyframes_[previous_keyframes_.size() - 2]);
+    // }
+
     // add tightly coupled VL constraints
     ProcessLidarCoupling(timestamp);
 
@@ -194,8 +184,50 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
   }
 }
 
+void LidarVisualMapper::AddRelativePoseConstraint(
+    const ros::Time &cur_kf_time, const ros::Time &prev_kf_time) {
+  fuse_variables::Position3DStamped::SharedPtr p1 = GetPosition(prev_kf_time);
+  fuse_variables::Orientation3DStamped::SharedPtr o1 =
+      GetOrientation(prev_kf_time);
+  fuse_variables::Position3DStamped::SharedPtr p2 = GetPosition(cur_kf_time);
+  fuse_variables::Orientation3DStamped::SharedPtr o2 =
+      GetOrientation(cur_kf_time);
+
+  // get pose 1 as eigen transform
+  Eigen::Vector3d position1(p1->data());
+  Eigen::Quaterniond orientation1(o1->w(), o1->x(), o1->y(), o1->z());
+  Eigen::Matrix4d T_WORLD_FRAME1;
+  beam::QuaternionAndTranslationToTransformMatrix(orientation1, position1,
+                                                  T_WORLD_FRAME1);
+
+  // get pose 2 as eigen transform
+  Eigen::Vector3d position2(p2->data());
+  Eigen::Quaterniond orientation2(o2->w(), o2->x(), o2->y(), o2->z());
+  Eigen::Matrix4d T_WORLD_FRAME2;
+  beam::QuaternionAndTranslationToTransformMatrix(orientation2, position2,
+                                                  T_WORLD_FRAME2);
+
+  // get relative transform between frames
+  Eigen::Matrix4d T_FRAME1_FRAME2 = T_WORLD_FRAME1.inverse() * T_WORLD_FRAME2;
+  Eigen::Vector3d rel_p;
+  Eigen::Quaterniond rel_q;
+  beam::TransformMatrixToQuaternionAndTranslation(T_FRAME1_FRAME2, rel_q,
+                                                  rel_p);
+
+  // create fuse constraint and add to graph
+  fuse_core::Vector7d pose_relative_mean;
+  pose_relative_mean << rel_p[0], rel_p[1], rel_p[2], rel_q.w(), rel_q.x(),
+      rel_q.y(), rel_q.z();
+  Eigen::Matrix<double, 6, 6> covariance =
+      Eigen::Matrix<double, 6, 6>::Identity() * 0.0003;
+  auto constraint =
+      fuse_constraints::RelativePose3DStampedConstraint::make_shared(
+          "vl_map_refinement", *p1, *o1, *p2, *o2, pose_relative_mean, covariance);
+  graph_->addConstraint(constraint);
+}
+
 void LidarVisualMapper::ProcessLidarCoupling(const ros::Time &kf_time) {
-  const int R = 9;
+  const int R = 7;
   Eigen::Matrix4d T_WORLD_CAM;
   if (GetCameraPose(kf_time, T_WORLD_CAM)) {
 
@@ -260,7 +292,7 @@ void LidarVisualMapper::ProcessLidarCoupling(const ros::Time &kf_time) {
         }
       }
 
-      // 1. Remove any inconsistent points (20cm threshold)
+      // 1. Remove any inconsistent points (10cm threshold)
       double sum = std::accumulate(std::begin(neighbourhood_depths),
                                    std::end(neighbourhood_depths), 0.0);
       double mean_depth = sum / neighbourhood_depths.size();
@@ -268,8 +300,8 @@ void LidarVisualMapper::ProcessLidarCoupling(const ros::Time &kf_time) {
       std::vector<double> filtered_distances;
       std::vector<Eigen::Vector2i> filtered_pixels;
       for (int i = 0; i < neighbourhood_depths.size(); i++) {
-        if (neighbourhood_depths[i] < mean_depth + 0.2 &&
-            neighbourhood_depths[i] > mean_depth - 0.2) {
+        if (neighbourhood_depths[i] < mean_depth + 0.1 &&
+            neighbourhood_depths[i] > mean_depth - 0.1) {
           filtered_depths.push_back(neighbourhood_depths[i]);
           filtered_distances.push_back(neighbourhood_distances[i]);
           filtered_pixels.push_back(neighbourhood_pixels[i]);
@@ -319,16 +351,11 @@ void LidarVisualMapper::ProcessLidarCoupling(const ros::Time &kf_time) {
       // 4. add constraint to the graph
       fuse_constraints::VLConstraint::SharedPtr vl_constraint =
           fuse_constraints::VLConstraint::make_shared(
-              "vl_map_refinement", *GetOrientation(kf_time), *GetPosition(kf_time), *lm,
-              T_cam_baselink_, matching_points[0], matching_points[1],
-              matching_points[2], confidence);
+              "vl_map_refinement", *GetOrientation(kf_time),
+              *GetPosition(kf_time), *lm, T_cam_baselink_, matching_points[0],
+              matching_points[1], matching_points[2], confidence);
       graph_->addConstraint(vl_constraint);
     }
-
-    // cv::Mat di_vis = beam_depth::VisualizeDepthImage(depth_image);
-    // std::string file = "/home/jake/data/keyframes_depth/" +
-    //                    std::to_string(kf_time.toSec()) + ".png";
-    // cv::imwrite(file, di_vis);
   }
 }
 
@@ -340,7 +367,7 @@ void LidarVisualMapper::OptimizeGraph() {
   options.minimizer_type = ceres::TRUST_REGION;
   options.linear_solver_type = ceres::SPARSE_SCHUR;
   options.preconditioner_type = ceres::SCHUR_JACOBI;
-  options.max_num_iterations = 80;
+  options.max_num_iterations = 30;
   graph_->optimize(options);
 }
 

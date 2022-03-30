@@ -33,17 +33,30 @@ public:
       const Eigen::Matrix4d &T_cam_baselink)
       : pixel_measurement_(pixel_measurement), cam_model_(cam_model),
         T_cam_baselink_(T_cam_baselink) {
-    // projection functor
+
+    // undistort pixel measurement
+    Eigen::Vector2i pixel_i = pixel_measurement_.cast<int>();
+    Eigen::Vector2i und_pixel;
+    if (!cam_model_->UndistortPixel(pixel_i, und_pixel)) {
+      ROS_FATAL_STREAM("Invalid pixel measurement for visual factor, "
+                       "undistorted pixel is in not image domain.");
+      throw std::runtime_error{"Invalid pixel measurement for visual factor, "
+                               "undistorted pixel is in not image domain."};
+    }
+    undistorted_pixel_measurement_ = und_pixel.cast<double>();
+
+    // projection functor (undistorted)
     compute_projection.reset(new ceres::CostFunctionToFunctor<2, 3>(
         new ceres::NumericDiffCostFunction<
             beam_optimization::CameraProjectionFunctor, ceres::CENTRAL, 2, 3>(
             new beam_optimization::CameraProjectionFunctor(
-                cam_model_, pixel_measurement_))));
+                cam_model_->GetRectifiedModel(),
+                undistorted_pixel_measurement_))));
 
     // compute sqrt information matrix
     sqrt_info_ = Eigen::Matrix2d::Identity();
-    sqrt_info_(0, 0) = cam_model_->GetIntrinsics()[0] / 1.5;
-    sqrt_info_(1, 1) = cam_model_->GetIntrinsics()[1] / 1.5;
+    sqrt_info_(0, 0) = 1 / std::pow(cam_model_->GetIntrinsics()[0], 2);
+    sqrt_info_(1, 1) = 1 / std::pow(cam_model_->GetIntrinsics()[1], 2);
   }
 
   template <typename T>
@@ -98,8 +111,11 @@ public:
 
     // compute the reprojection residual
     Eigen::Matrix<T, 2, 1> result;
-    result[0] = (pixel_measurement_.cast<T>()[0] - pixel_projected[0]);
-    result[1] = (pixel_measurement_.cast<T>()[1] - pixel_projected[1]);
+    result[0] =
+        (undistorted_pixel_measurement_.cast<T>()[0] - pixel_projected[0]);
+    result[1] =
+        (undistorted_pixel_measurement_.cast<T>()[1] - pixel_projected[1]);
+    result = sqrt_info_.cast<T>() * result;
 
     // fill residual
     residual[0] = result[0];
@@ -109,6 +125,7 @@ public:
 
 private:
   Eigen::Vector2d pixel_measurement_;
+  Eigen::Vector2d undistorted_pixel_measurement_;
   std::shared_ptr<beam_calibration::CameraModel> cam_model_;
   std::unique_ptr<ceres::CostFunctionToFunctor<2, 3>> compute_projection;
   Eigen::Matrix4d T_cam_baselink_;

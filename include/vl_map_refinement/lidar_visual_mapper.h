@@ -65,6 +65,9 @@ protected:
 
   void ProcessLidarCoupling(const ros::Time &kf_time);
 
+  void AddRelativePoseConstraint(const ros::Time &cur_kf_time,
+                                 const ros::Time &prev_kf_time);
+
 private:
   std::shared_ptr<beam_calibration::TfTree> tree_;
   std::shared_ptr<vl_map_refinement::PoseLookup> pose_lookup_;
@@ -84,13 +87,10 @@ private:
   ros::Time start_time_;
   ros::Time end_time_;
 
-  double total_trajectory_m_;
-
   size_t num_keyframes_{0};
 
   size_t num_scans_in_cloud_{0};
 
   std::deque<pcl::PointCloud<pcl::PointXYZ>> current_clouds_;
-
 };
 } // namespace vl_map_refinement
