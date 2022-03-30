@@ -39,6 +39,11 @@ public:
             beam_optimization::CameraProjectionFunctor, ceres::CENTRAL, 2, 3>(
             new beam_optimization::CameraProjectionFunctor(
                 cam_model_, pixel_measurement_))));
+
+    // compute sqrt information matrix
+    sqrt_info_ = Eigen::Matrix2d::Identity();
+    sqrt_info_(0, 0) = cam_model_->GetIntrinsics()[0] / 1.5;
+    sqrt_info_(1, 1) = cam_model_->GetIntrinsics()[1] / 1.5;
   }
 
   template <typename T>
@@ -79,6 +84,7 @@ public:
         T_WORLD_BASELINK.inverse() * P_WORLD_h;
     Eigen::Matrix<T, 3, 1> P_CAM =
         (T_CAM_BASELINK * P_BASELINK_h).hnormalized();
+
     T P_CAMERA[3];
     P_CAMERA[0] = P_CAM[0];
     P_CAMERA[1] = P_CAM[1];
@@ -106,6 +112,7 @@ private:
   std::shared_ptr<beam_calibration::CameraModel> cam_model_;
   std::unique_ptr<ceres::CostFunctionToFunctor<2, 3>> compute_projection;
   Eigen::Matrix4d T_cam_baselink_;
+  Eigen::Matrix2d sqrt_info_;
 };
 
 } // namespace fuse_constraints

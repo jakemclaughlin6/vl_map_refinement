@@ -108,7 +108,7 @@ void LidarVisualMapper::AddLidarScan(
 
   current_clouds_.push_back(cloud_in_world_frame);
 
-  if (current_clouds_.size() >= 2) {
+  if (current_clouds_.size() >= 1) {
     current_clouds_.pop_front();
   }
 }
@@ -120,7 +120,7 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
 
   // determine if its a keyframe
   if (previous_keyframes_.empty() ||
-      timestamp.toSec() - previous_keyframes_.back().toSec() >= 0.1) {
+      timestamp.toSec() - previous_keyframes_.back().toSec() >= 0.2) {
     std::cout << "Processing keyframe " << GetNumKeyframes() << std::endl;
     // std::string img_file = "/home/jake/data/keyframes_bw/" +
     //                        std::to_string(timestamp.toSec()) + ".png";
@@ -299,17 +299,29 @@ void LidarVisualMapper::ProcessLidarCoupling(const ros::Time &kf_time) {
       for (int i = 0; i < 3; i++) {
         Eigen::Vector3d direction;
         if (cam_model_->BackProject(matching_pixels[i], direction)) {
-          Eigen::Vector3d coords = matching_depths[i] *
-          direction.normalized(); matching_points.push_back(coords);
+          Eigen::Vector3d coords = matching_depths[i] * direction.normalized();
+          matching_points.push_back(coords);
         }
       }
+
+      // compute a confidence for the measurement
+      Eigen::Matrix4d T_WORLD_CAM;
+      GetCameraPose(kf_time, T_WORLD_CAM);
+      Eigen::Vector4d lm_p(lm->x(), lm->y(), lm->z(), 1);
+      Eigen::Vector3d lm_cam = (T_WORLD_CAM.inverse() * lm_p).hnormalized();
+      double lm_depth = lm_cam.norm();
+      double plane_depth =
+          (matching_points[0].norm() + matching_points[1].norm() +
+           matching_points[2].norm()) /
+          3;
+      double confidence = 1 / (std::abs(lm_depth - plane_depth));
 
       // 4. add constraint to the graph
       fuse_constraints::VLConstraint::SharedPtr vl_constraint =
           fuse_constraints::VLConstraint::make_shared(
-              "vl_map_refinement", *GetOrientation(kf_time),
-              *GetPosition(kf_time), *lm, T_cam_baselink_,
-              matching_points[0], matching_points[1], matching_points[2]);
+              "vl_map_refinement", *GetOrientation(kf_time), *GetPosition(kf_time), *lm,
+              T_cam_baselink_, matching_points[0], matching_points[1],
+              matching_points[2], confidence);
       graph_->addConstraint(vl_constraint);
     }
 

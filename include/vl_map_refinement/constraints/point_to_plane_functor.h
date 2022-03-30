@@ -28,9 +28,10 @@ public:
   PointToPlaneCostFunctor(const Eigen::Vector3d &P_REF1,
                           const Eigen::Vector3d &P_REF2,
                           const Eigen::Vector3d &P_REF3,
-                          const Eigen::Matrix4d &T_cam_baselink)
+                          const Eigen::Matrix4d &T_cam_baselink,
+                          const double &confidence)
       : P_REF1_(P_REF1), P_REF2_(P_REF2), P_REF3_(P_REF3),
-        T_cam_baselink_(T_cam_baselink) {}
+        T_cam_baselink_(T_cam_baselink), confidence_(confidence) {}
 
   template <typename T>
   bool operator()(const T *const R_WORLD_BASELINK,
@@ -112,7 +113,7 @@ public:
     T norm =
         sqrt(cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]);
 
-    residual[0] = ceres::DotProduct(dR1, cross) / norm;
+    residual[0] = (T)confidence_ * (ceres::DotProduct(dR1, cross) / norm);
 
     return true;
   }
@@ -122,6 +123,7 @@ private:
   Eigen::Vector3d P_REF2_;
   Eigen::Vector3d P_REF3_;
   Eigen::Matrix4d T_cam_baselink_;
+  double confidence_;
 };
 
 } // namespace fuse_constraints

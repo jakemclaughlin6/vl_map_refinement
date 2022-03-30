@@ -43,7 +43,7 @@ public:
                const fuse_variables::Point3DLandmark &P_WORLD,
                const Eigen::Matrix4d &T_cam_baselink,
                const Eigen::Vector3d &P_REF1, const Eigen::Vector3d &P_REF2,
-               const Eigen::Vector3d &P_REF3);
+               const Eigen::Vector3d &P_REF3, const double &confidence = 1.0);
 
   /**
    * @brief Destructor
@@ -94,6 +94,7 @@ protected:
   Eigen::Vector3d P_REF1_;
   Eigen::Vector3d P_REF2_;
   Eigen::Vector3d P_REF3_;
+  double confidence_;
 
 private:
   // Allow Boost Serialization access to private methods
