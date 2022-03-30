@@ -121,7 +121,7 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
   // determine if its a keyframe
   if (previous_keyframes_.empty() ||
       timestamp.toSec() - previous_keyframes_.back().toSec() >= 0.1) {
-
+    std::cout << "Processing keyframe " << GetNumKeyframes() << std::endl;
     // std::string img_file = "/home/jake/data/keyframes_bw/" +
     //                        std::to_string(timestamp.toSec()) + ".png";
     // cv::imwrite(img_file, image);
@@ -185,7 +185,7 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
     }
 
     // add tightly coupled VL constraints
-    // ProcessLidarCoupling(timestamp);
+    ProcessLidarCoupling(timestamp);
 
     // manage keyframes
     if (previous_keyframes_.size() > 20) {
@@ -229,8 +229,16 @@ void LidarVisualMapper::ProcessLidarCoupling(const ros::Time &kf_time) {
       // compute search area
       int start_col = pixel[0] - R, end_col = pixel[0] + R,
           start_row = pixel[1] - R, end_row = pixel[1] + R;
+      if (start_col < 0)
+        start_col = 0;
+      if (end_col > depth_image.cols)
+        end_col = depth_image.cols;
+      if (start_row < 0)
+        start_row = 0;
+      if (end_row > depth_image.cols)
+        end_row = depth_image.cols;
 
-      // vector of <pixel distance, depth>
+      // vectors of pixels, pixel distances, depth
       std::vector<double> neighbourhood_depths;
       std::vector<double> neighbourhood_distances;
       std::vector<Eigen::Vector2i> neighbourhood_pixels;
@@ -252,16 +260,16 @@ void LidarVisualMapper::ProcessLidarCoupling(const ros::Time &kf_time) {
         }
       }
 
-      // 1. Remove any occluded points (20cm threshold)
+      // 1. Remove any inconsistent points (20cm threshold)
+      double sum = std::accumulate(std::begin(neighbourhood_depths),
+                                   std::end(neighbourhood_depths), 0.0);
+      double mean_depth = sum / neighbourhood_depths.size();
       std::vector<double> filtered_depths;
       std::vector<double> filtered_distances;
       std::vector<Eigen::Vector2i> filtered_pixels;
-      double min_depth =
-          neighbourhood_depths[std::min_element(neighbourhood_depths.begin(),
-                                                neighbourhood_depths.end()) -
-                               neighbourhood_depths.begin()];
       for (int i = 0; i < neighbourhood_depths.size(); i++) {
-        if (neighbourhood_depths[i] < min_depth + 0.2) {
+        if (neighbourhood_depths[i] < mean_depth + 0.2 &&
+            neighbourhood_depths[i] > mean_depth - 0.2) {
           filtered_depths.push_back(neighbourhood_depths[i]);
           filtered_distances.push_back(neighbourhood_distances[i]);
           filtered_pixels.push_back(neighbourhood_pixels[i]);
@@ -271,7 +279,6 @@ void LidarVisualMapper::ProcessLidarCoupling(const ros::Time &kf_time) {
       // 2. find 3 closest points to the landmark
       if (filtered_distances.size() < 3)
         continue;
-
       std::vector<Eigen::Vector2i> matching_pixels;
       std::vector<double> matching_depths;
       for (int i = 0; i < 3; i++) {
@@ -292,8 +299,8 @@ void LidarVisualMapper::ProcessLidarCoupling(const ros::Time &kf_time) {
       for (int i = 0; i < 3; i++) {
         Eigen::Vector3d direction;
         if (cam_model_->BackProject(matching_pixels[i], direction)) {
-          Eigen::Vector3d coords = matching_depths[i] * direction.normalized();
-          matching_points.push_back(coords);
+          Eigen::Vector3d coords = matching_depths[i] *
+          direction.normalized(); matching_points.push_back(coords);
         }
       }
 
@@ -301,8 +308,8 @@ void LidarVisualMapper::ProcessLidarCoupling(const ros::Time &kf_time) {
       fuse_constraints::VLConstraint::SharedPtr vl_constraint =
           fuse_constraints::VLConstraint::make_shared(
               "vl_map_refinement", *GetOrientation(kf_time),
-              *GetPosition(kf_time), *lm, T_cam_baselink_, matching_points[0],
-              matching_points[1], matching_points[2]);
+              *GetPosition(kf_time), *lm, T_cam_baselink_,
+              matching_points[0], matching_points[1], matching_points[2]);
       graph_->addConstraint(vl_constraint);
     }
 
@@ -364,7 +371,7 @@ void LidarVisualMapper::OutputResults(const std::string &folder) {
                                       beam::PointCloudFileType::PCDBINARY);
 
   // output results
-  std::ofstream outfile(folder + "/result_poses.txt");
+  std::ofstream outfile(folder + "/stamped_traj_estimate.txt");
   pcl::PointCloud<pcl::PointXYZRGB> frame_cloud;
   for (auto &pose : poses) {
     double timestamp = pose.first;
