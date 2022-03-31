@@ -33,7 +33,6 @@ public:
       const Eigen::Matrix4d &T_cam_baselink)
       : pixel_measurement_(pixel_measurement), cam_model_(cam_model),
         T_cam_baselink_(T_cam_baselink) {
-
     // undistort pixel measurement
     Eigen::Vector2i pixel_i = pixel_measurement_.cast<int>();
     Eigen::Vector2i und_pixel;
@@ -53,10 +52,7 @@ public:
                 cam_model_->GetRectifiedModel(),
                 undistorted_pixel_measurement_))));
 
-    // compute sqrt information matrix
     sqrt_info_ = Eigen::Matrix2d::Identity();
-    sqrt_info_(0, 0) = 1 / std::pow(cam_model_->GetIntrinsics()[0], 2);
-    sqrt_info_(1, 1) = 1 / std::pow(cam_model_->GetIntrinsics()[1], 2);
   }
 
   template <typename T>
@@ -97,7 +93,6 @@ public:
         T_WORLD_BASELINK.inverse() * P_WORLD_h;
     Eigen::Matrix<T, 3, 1> P_CAM =
         (T_CAM_BASELINK * P_BASELINK_h).hnormalized();
-
     T P_CAMERA[3];
     P_CAMERA[0] = P_CAM[0];
     P_CAMERA[1] = P_CAM[1];

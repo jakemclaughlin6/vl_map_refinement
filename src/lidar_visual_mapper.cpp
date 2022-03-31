@@ -1,5 +1,5 @@
-#include <vl_map_refinement/constraints/reprojection_constraint.h>
 #include <fuse_constraints/relative_pose_3d_stamped_constraint.h>
+#include <vl_map_refinement/constraints/reprojection_constraint.h>
 #include <vl_map_refinement/constraints/vl_constraint.h>
 #include <vl_map_refinement/lidar_visual_mapper.h>
 
@@ -16,7 +16,8 @@ LidarVisualMapper::LidarVisualMapper(
     const std::string &cam_model_path, const std::string &pose_lookup_path,
     const std::string &extrinsics_path, const std::string &camera_frame_id,
     const std::string &lidar_frame_id, const std::string &pose_frame_id,
-    const ros::Time &start_time, const ros::Time &end_time)
+    const ros::Time &start_time, const ros::Time &end_time,
+    const double &odom_prior_covariance_diag)
     : camera_frame_id_(camera_frame_id), lidar_frame_id_(lidar_frame_id),
       pose_frame_id_(pose_frame_id), start_time_(start_time),
       end_time_(end_time) {
@@ -65,6 +66,10 @@ LidarVisualMapper::LidarVisualMapper(
 
   // create new graph object
   graph_ = std::make_shared<fuse_graphs::HashGraph>();
+
+  // initialize covariance matrix for priors on poses
+  prior_covariance_ =
+      Eigen::Matrix<double, 6, 6>::Identity() * odom_prior_covariance_diag;
 }
 
 void LidarVisualMapper::AddLidarScan(
@@ -85,7 +90,7 @@ void LidarVisualMapper::AddLidarScan(
 
   current_clouds_.push_back(cloud_in_world_frame);
 
-  if (current_clouds_.size() >= 1) {
+  if (current_clouds_.size() >= 4) {
     current_clouds_.pop_front();
   }
 }
@@ -98,7 +103,8 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
   // determine if its a keyframe
   if (previous_keyframes_.empty() ||
       timestamp.toSec() - previous_keyframes_.back().toSec() >= 0.2) {
-    std::cout << "Processing keyframe " << GetNumKeyframes() << std::endl;
+    std::cout << "\nProcessing keyframe " << GetNumKeyframes() << ":"
+              << std::endl;
 
     // push keyframe time to queue
     previous_keyframes_.push_back(timestamp);
@@ -112,6 +118,7 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
     AddBaselinkPose(T_WORLD_BASELINK, timestamp);
 
     size_t num_lms = 0;
+    size_t num_rep_c = 0;
     // triangulate possible landmarks and add reproj constraints
     if (previous_keyframes_.size() > 3) {
       std::vector<uint64_t> landmarks =
@@ -126,6 +133,7 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
             continue;
 
           AddReprojectionConstraint(timestamp, id, pixel);
+          num_rep_c++;
         } else {
           // get measurements of landmark for triangulation
           std::vector<Eigen::Matrix4d, beam::AlignMat4d> T_cam_world_v;
@@ -158,6 +166,7 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
               AddLandmark(point.value(), id);
               num_lms++;
               for (int i = 0; i < observation_stamps.size(); i++) {
+                num_rep_c++;
                 AddReprojectionConstraint(
                     observation_stamps[i], id,
                     tracker_->Get(observation_stamps[i], id));
@@ -168,11 +177,15 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
       }
     }
 
-    // // add relative pose constraint
-    // if (previous_keyframes_.size() >= 2) {
-    //   AddRelativePoseConstraint(
-    //       timestamp, previous_keyframes_[previous_keyframes_.size() - 2]);
-    // }
+    // add relative pose constraint
+    if (previous_keyframes_.size() >= 2) {
+      AddRelativePoseConstraint(
+          timestamp, previous_keyframes_[previous_keyframes_.size() - 2]);
+    }
+
+    std::cout << "Added " << num_lms << " visual landmarks." << std::endl;
+    std::cout << "Added " << num_rep_c << " reprojection constraints."
+              << std::endl;
 
     // add tightly coupled VL constraints
     ProcessLidarCoupling(timestamp);
@@ -218,18 +231,18 @@ void LidarVisualMapper::AddRelativePoseConstraint(
   fuse_core::Vector7d pose_relative_mean;
   pose_relative_mean << rel_p[0], rel_p[1], rel_p[2], rel_q.w(), rel_q.x(),
       rel_q.y(), rel_q.z();
-  Eigen::Matrix<double, 6, 6> covariance =
-      Eigen::Matrix<double, 6, 6>::Identity() * 0.0003;
   auto constraint =
       fuse_constraints::RelativePose3DStampedConstraint::make_shared(
-          "vl_map_refinement", *p1, *o1, *p2, *o2, pose_relative_mean, covariance);
+          "vl_map_refinement", *p1, *o1, *p2, *o2, pose_relative_mean,
+          prior_covariance_);
   graph_->addConstraint(constraint);
 }
 
 void LidarVisualMapper::ProcessLidarCoupling(const ros::Time &kf_time) {
-  const int R = 7;
+  const int R = 9;
   Eigen::Matrix4d T_WORLD_CAM;
   if (GetCameraPose(kf_time, T_WORLD_CAM)) {
+    size_t num_vl_c = 0;
 
     // aggregate current scans
     pcl::PointCloud<pcl::PointXYZ> aggregate_cloud;
@@ -355,7 +368,10 @@ void LidarVisualMapper::ProcessLidarCoupling(const ros::Time &kf_time) {
               *GetPosition(kf_time), *lm, T_cam_baselink_, matching_points[0],
               matching_points[1], matching_points[2], confidence);
       graph_->addConstraint(vl_constraint);
+      num_vl_c++;
     }
+    std::cout << "Added " << num_vl_c << " visual-lidar constraints."
+              << std::endl;
   }
 }
 

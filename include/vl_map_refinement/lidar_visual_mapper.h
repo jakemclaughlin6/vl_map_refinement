@@ -31,7 +31,8 @@ public:
                     const std::string &camera_frame_id,
                     const std::string &lidar_frame_id,
                     const std::string &pose_frame_id,
-                    const ros::Time &start_time, const ros::Time &end_time);
+                    const ros::Time &start_time, const ros::Time &end_time,
+                    const double &odom_prior_covariance_diag);
 
   void AddLidarScan(const sensor_msgs::PointCloud2::Ptr &scan);
 
@@ -90,6 +91,8 @@ private:
   size_t num_keyframes_{0};
 
   size_t num_scans_in_cloud_{0};
+
+  Eigen::Matrix<double, 6, 6> prior_covariance_;
 
   std::deque<pcl::PointCloud<pcl::PointXYZ>> current_clouds_;
 };

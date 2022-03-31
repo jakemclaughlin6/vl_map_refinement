@@ -51,7 +51,7 @@ int main(int argc, char *argv[]) {
       std::make_shared<vl_map_refinement::LidarVisualMapper>(
           J["cam_intrinsics_file"], J["pose_file"], J["extrinsics_file"],
           J["camera_frame_id"], J["lidar_frame_id"], J["pose_frame_id"],
-          start_time, end_time);
+          start_time, end_time, J["odom_prior_covariance_diag"]);
 
   int max_keyframes = J["max_keyframes"];
   // Begin processing loop
@@ -127,6 +127,11 @@ bool ValidateJsonConfig(const nlohmann::json &J) {
   }
   if (J.find("output_folder") == J.end()) {
     BEAM_ERROR("Field 'output_folder' missing.");
+    pass = false;
+  }
+
+  if (J.find("odom_prior_covariance_diag") == J.end()) {
+    BEAM_ERROR("Field 'odom_prior_covariance_diag' missing.");
     pass = false;
   }
 
