@@ -69,6 +69,11 @@ protected:
   void AddRelativePoseConstraint(const ros::Time &cur_kf_time,
                                  const ros::Time &prev_kf_time);
 
+  void AddAbsolutePoseConstraint(const ros::Time &cur_kf_time);
+
+  Eigen::Matrix4d PerturbPose(const ros::Time &stamp,
+                              const Eigen::Matrix4d &T_WORLD_BASELINK);
+
 private:
   std::shared_ptr<beam_calibration::TfTree> tree_;
   std::shared_ptr<vl_map_refinement::PoseLookup> pose_lookup_;

@@ -1,3 +1,4 @@
+#include <fuse_constraints/absolute_pose_3d_stamped_constraint.h>
 #include <fuse_constraints/relative_pose_3d_stamped_constraint.h>
 #include <vl_map_refinement/constraints/reprojection_constraint.h>
 #include <vl_map_refinement/constraints/vl_constraint.h>
@@ -81,6 +82,9 @@ void LidarVisualMapper::AddLidarScan(
   Eigen::Matrix4d T_WORLD_BASELINK;
   pose_lookup_->GetT_WORLD_SENSOR(T_WORLD_BASELINK, scan->header.stamp);
 
+  // perturb pose (for experiment)
+  T_WORLD_BASELINK = PerturbPose(scan->header.stamp, T_WORLD_BASELINK);
+
   // get pose in lidar frame
   Eigen::Matrix4d T_WORLD_LIDAR = T_WORLD_BASELINK * T_baselink_lidar_;
 
@@ -113,6 +117,9 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
     // add keyframes pose to the graph
     Eigen::Matrix4d T_WORLD_BASELINK;
     pose_lookup_->GetT_WORLD_SENSOR(T_WORLD_BASELINK, timestamp);
+
+    // perturb pose (for experiment)
+    T_WORLD_BASELINK = PerturbPose(timestamp, T_WORLD_BASELINK);
 
     // add pose to graph
     AddBaselinkPose(T_WORLD_BASELINK, timestamp);
@@ -181,6 +188,8 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
     if (previous_keyframes_.size() >= 2) {
       AddRelativePoseConstraint(
           timestamp, previous_keyframes_[previous_keyframes_.size() - 2]);
+    } else if (previous_keyframes_.size() == 1) {
+      AddAbsolutePoseConstraint(timestamp);
     }
 
     std::cout << "Added " << num_lms << " visual landmarks." << std::endl;
@@ -235,6 +244,24 @@ void LidarVisualMapper::AddRelativePoseConstraint(
       fuse_constraints::RelativePose3DStampedConstraint::make_shared(
           "vl_map_refinement", *p1, *o1, *p2, *o2, pose_relative_mean,
           prior_covariance_);
+  graph_->addConstraint(constraint);
+}
+
+void LidarVisualMapper::AddAbsolutePoseConstraint(
+    const ros::Time &cur_kf_time) {
+  // set a covariance with near absolute certainty
+  static Eigen::Matrix<double, 6, 6> anchor_covariance;
+  anchor_covariance = Eigen::Matrix<double, 6, 6>::Identity() * 0.0000000000001;
+  // get position of keyframe
+  fuse_variables::Position3DStamped::SharedPtr p = GetPosition(cur_kf_time);
+  fuse_variables::Orientation3DStamped::SharedPtr o =
+      GetOrientation(cur_kf_time);
+  // create constraint and add to graph
+  fuse_core::Vector7d mean;
+  mean << p->x(), p->y(), p->z(), o->w(), o->x(), o->y(), o->z();
+  auto constraint =
+      fuse_constraints::AbsolutePose3DStampedConstraint::make_shared(
+          "vl_map_refinement", *p, *o, mean, anchor_covariance);
   graph_->addConstraint(constraint);
 }
 
@@ -569,6 +596,22 @@ bool LidarVisualMapper::GetCameraPose(const ros::Time &stamp,
   } else {
     return false;
   }
+}
+
+Eigen::Matrix4d
+LidarVisualMapper::PerturbPose(const ros::Time &stamp,
+                               const Eigen::Matrix4d &T_WORLD_BASELINK) {
+  // perturbation in roll, pitch, yaw, x, y, z (deg/s and m/s)
+  Eigen::Matrix<double, 6, 1> perturbation;
+  perturbation << 0, 0, 0.5, 0.02, 0.02, 0.001;
+
+  // compute true perturbation based on how much time has passed
+  double time_since_start = stamp.toSec() - start_time_.toSec();
+  Eigen::Matrix<double, 6, 1> weighted_perturbation =
+      perturbation * time_since_start;
+
+  // perturb pose
+  return beam::PerturbTransformDegM(T_WORLD_BASELINK, weighted_perturbation);
 }
 
 } // namespace vl_map_refinement
