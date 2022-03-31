@@ -10,5 +10,5 @@
   "lidar_topic": "/lidar_h/velodyne_points",
   "max_keyframes": 50,
   "output_folder": "/home/jake/data/LVIO/E5/Fisheye/results/",
-  "odom_prior_covariance_diag": 0.5
+  "odom_prior_covariance_diag": 1
 }

@@ -206,67 +206,8 @@ void LidarVisualMapper::ProcessImage(const cv::Mat &image,
   }
 }
 
-void LidarVisualMapper::AddRelativePoseConstraint(
-    const ros::Time &cur_kf_time, const ros::Time &prev_kf_time) {
-  fuse_variables::Position3DStamped::SharedPtr p1 = GetPosition(prev_kf_time);
-  fuse_variables::Orientation3DStamped::SharedPtr o1 =
-      GetOrientation(prev_kf_time);
-  fuse_variables::Position3DStamped::SharedPtr p2 = GetPosition(cur_kf_time);
-  fuse_variables::Orientation3DStamped::SharedPtr o2 =
-      GetOrientation(cur_kf_time);
-
-  // get pose 1 as eigen transform
-  Eigen::Vector3d position1(p1->data());
-  Eigen::Quaterniond orientation1(o1->w(), o1->x(), o1->y(), o1->z());
-  Eigen::Matrix4d T_WORLD_FRAME1;
-  beam::QuaternionAndTranslationToTransformMatrix(orientation1, position1,
-                                                  T_WORLD_FRAME1);
-
-  // get pose 2 as eigen transform
-  Eigen::Vector3d position2(p2->data());
-  Eigen::Quaterniond orientation2(o2->w(), o2->x(), o2->y(), o2->z());
-  Eigen::Matrix4d T_WORLD_FRAME2;
-  beam::QuaternionAndTranslationToTransformMatrix(orientation2, position2,
-                                                  T_WORLD_FRAME2);
-
-  // get relative transform between frames
-  Eigen::Matrix4d T_FRAME1_FRAME2 = T_WORLD_FRAME1.inverse() * T_WORLD_FRAME2;
-  Eigen::Vector3d rel_p;
-  Eigen::Quaterniond rel_q;
-  beam::TransformMatrixToQuaternionAndTranslation(T_FRAME1_FRAME2, rel_q,
-                                                  rel_p);
-
-  // create fuse constraint and add to graph
-  fuse_core::Vector7d pose_relative_mean;
-  pose_relative_mean << rel_p[0], rel_p[1], rel_p[2], rel_q.w(), rel_q.x(),
-      rel_q.y(), rel_q.z();
-  auto constraint =
-      fuse_constraints::RelativePose3DStampedConstraint::make_shared(
-          "vl_map_refinement", *p1, *o1, *p2, *o2, pose_relative_mean,
-          prior_covariance_);
-  graph_->addConstraint(constraint);
-}
-
-void LidarVisualMapper::AddAbsolutePoseConstraint(
-    const ros::Time &cur_kf_time) {
-  // set a covariance with near absolute certainty
-  static Eigen::Matrix<double, 6, 6> anchor_covariance;
-  anchor_covariance = Eigen::Matrix<double, 6, 6>::Identity() * 0.0000000000001;
-  // get position of keyframe
-  fuse_variables::Position3DStamped::SharedPtr p = GetPosition(cur_kf_time);
-  fuse_variables::Orientation3DStamped::SharedPtr o =
-      GetOrientation(cur_kf_time);
-  // create constraint and add to graph
-  fuse_core::Vector7d mean;
-  mean << p->x(), p->y(), p->z(), o->w(), o->x(), o->y(), o->z();
-  auto constraint =
-      fuse_constraints::AbsolutePose3DStampedConstraint::make_shared(
-          "vl_map_refinement", *p, *o, mean, anchor_covariance);
-  graph_->addConstraint(constraint);
-}
-
 void LidarVisualMapper::ProcessLidarCoupling(const ros::Time &kf_time) {
-  const int R = 9;
+  const int R = 7;
   Eigen::Matrix4d T_WORLD_CAM;
   if (GetCameraPose(kf_time, T_WORLD_CAM)) {
     size_t num_vl_c = 0;
@@ -596,6 +537,65 @@ bool LidarVisualMapper::GetCameraPose(const ros::Time &stamp,
   } else {
     return false;
   }
+}
+
+void LidarVisualMapper::AddRelativePoseConstraint(
+    const ros::Time &cur_kf_time, const ros::Time &prev_kf_time) {
+  fuse_variables::Position3DStamped::SharedPtr p1 = GetPosition(prev_kf_time);
+  fuse_variables::Orientation3DStamped::SharedPtr o1 =
+      GetOrientation(prev_kf_time);
+  fuse_variables::Position3DStamped::SharedPtr p2 = GetPosition(cur_kf_time);
+  fuse_variables::Orientation3DStamped::SharedPtr o2 =
+      GetOrientation(cur_kf_time);
+
+  // get pose 1 as eigen transform
+  Eigen::Vector3d position1(p1->data());
+  Eigen::Quaterniond orientation1(o1->w(), o1->x(), o1->y(), o1->z());
+  Eigen::Matrix4d T_WORLD_FRAME1;
+  beam::QuaternionAndTranslationToTransformMatrix(orientation1, position1,
+                                                  T_WORLD_FRAME1);
+
+  // get pose 2 as eigen transform
+  Eigen::Vector3d position2(p2->data());
+  Eigen::Quaterniond orientation2(o2->w(), o2->x(), o2->y(), o2->z());
+  Eigen::Matrix4d T_WORLD_FRAME2;
+  beam::QuaternionAndTranslationToTransformMatrix(orientation2, position2,
+                                                  T_WORLD_FRAME2);
+
+  // get relative transform between frames
+  Eigen::Matrix4d T_FRAME1_FRAME2 = T_WORLD_FRAME1.inverse() * T_WORLD_FRAME2;
+  Eigen::Vector3d rel_p;
+  Eigen::Quaterniond rel_q;
+  beam::TransformMatrixToQuaternionAndTranslation(T_FRAME1_FRAME2, rel_q,
+                                                  rel_p);
+
+  // create fuse constraint and add to graph
+  fuse_core::Vector7d pose_relative_mean;
+  pose_relative_mean << rel_p[0], rel_p[1], rel_p[2], rel_q.w(), rel_q.x(),
+      rel_q.y(), rel_q.z();
+  auto constraint =
+      fuse_constraints::RelativePose3DStampedConstraint::make_shared(
+          "vl_map_refinement", *p1, *o1, *p2, *o2, pose_relative_mean,
+          prior_covariance_);
+  graph_->addConstraint(constraint);
+}
+
+void LidarVisualMapper::AddAbsolutePoseConstraint(
+    const ros::Time &cur_kf_time) {
+  // set a covariance with near absolute certainty
+  static Eigen::Matrix<double, 6, 6> anchor_covariance;
+  anchor_covariance = Eigen::Matrix<double, 6, 6>::Identity() * 0.0000000000001;
+  // get position of keyframe
+  fuse_variables::Position3DStamped::SharedPtr p = GetPosition(cur_kf_time);
+  fuse_variables::Orientation3DStamped::SharedPtr o =
+      GetOrientation(cur_kf_time);
+  // create constraint and add to graph
+  fuse_core::Vector7d mean;
+  mean << p->x(), p->y(), p->z(), o->w(), o->x(), o->y(), o->z();
+  auto constraint =
+      fuse_constraints::AbsolutePose3DStampedConstraint::make_shared(
+          "vl_map_refinement", *p, *o, mean, anchor_covariance);
+  graph_->addConstraint(constraint);
 }
 
 Eigen::Matrix4d
