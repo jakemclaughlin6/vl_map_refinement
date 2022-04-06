@@ -94,7 +94,7 @@ void LidarVisualMapper::AddLidarScan(
 
   current_clouds_.push_back(cloud_in_world_frame);
 
-  if (current_clouds_.size() >= 4) {
+  if (current_clouds_.size() >= 2) {
     current_clouds_.pop_front();
   }
 }
@@ -349,9 +349,9 @@ void LidarVisualMapper::OptimizeGraph() {
   options.num_threads = 6;
   options.num_linear_solver_threads = 6;
   options.minimizer_type = ceres::TRUST_REGION;
-  options.linear_solver_type = ceres::SPARSE_SCHUR;
-  options.preconditioner_type = ceres::SCHUR_JACOBI;
-  options.max_num_iterations = 30;
+  // options.trust_region_strategy_type = ceres::DOGLEG;
+  options.gradient_tolerance = 0.00001;
+  options.parameter_tolerance = 0.01;
   graph_->optimize(options);
 }
 
